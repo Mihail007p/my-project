@@ -1,6 +1,5 @@
 name: CI
 
-# Заготовка пайплайна: раскомментируйте шаги под свой стек.
 on:
   push:
     branches: [main]
@@ -8,24 +7,23 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Пример для Node.js:
-      # - uses: actions/setup-node@v4
-      #   with:
-      #     node-version: 20
-      # - run: npm ci
-      # - run: npm test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      # Пример для Python:
-      # - uses: actions/setup-python@v5
-      #   with:
-      #     python-version: '3.12'
-      # - run: pip install -r requirements.txt
-      # - run: pytest
+      - name: Синтаксис игры и тестов
+        run: |
+          node --check tests/scenario-test.js
+          node --check tests/headless-test.js
+          node --check tests/screenshot-test.js
 
-      - name: Placeholder
-        run: echo "Pipeline пока пустой — добавьте шаги для вашего стека"
+      - name: Симуляция без DOM (60 секунд игры)
+        run: node tests/headless-test.js
+
+      - name: Сценарии (удары, обгоны, барьер, трафик, нитро)
+        run: node tests/scenario-test.js
