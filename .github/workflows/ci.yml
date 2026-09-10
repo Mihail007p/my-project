@@ -1,0 +1,31 @@
+name: CI
+
+# Заготовка пайплайна: раскомментируйте шаги под свой стек.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Пример для Node.js:
+      # - uses: actions/setup-node@v4
+      #   with:
+      #     node-version: 20
+      # - run: npm ci
+      # - run: npm test
+
+      # Пример для Python:
+      # - uses: actions/setup-python@v5
+      #   with:
+      #     python-version: '3.12'
+      # - run: pip install -r requirements.txt
+      # - run: pytest
+
+      - name: Placeholder
+        run: echo "Pipeline пока пустой — добавьте шаги для вашего стека"
