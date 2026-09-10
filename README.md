@@ -47,9 +47,10 @@ cd my-project
 .
 ├── index.html        # игра «Нитро-Шоссе» (один файл, без зависимостей)
 ├── GAME.md           # описание игры, механик и архитектуры
+├── Makefile          # make serve / make test / make shots
 ├── tests/            # автотесты: логика, сценарии, скриншоты
 ├── .github/          # шаблоны issues/PR и CI
-├── docs/             # документация
+├── docs/             # документация, план (ROADMAP.md), скриншоты
 ├── .editorconfig     # единый стиль отступов
 ├── .gitignore        # что не коммитим
 ├── CHANGELOG.md      # история изменений
@@ -60,11 +61,22 @@ cd my-project
 ## Разработка
 
 ```bash
+make serve     # игра на http://localhost:8000
+make test      # все автотесты (без браузера)
+make shots     # скриншоты в headless Chrome (нужен puppeteer)
+make help      # список команд
+```
+
+Тесты по отдельности:
+
+```bash
 node tests/headless-test.js      # симуляция без DOM
 node tests/scenario-test.js      # сценарии: удары, обгоны, барьер, трафик, нитро
 node tests/race-test.js          # гонка: соперники, круги, трамплин, дрифт, финиш
-node tests/screenshot-test.js    # прогон в headless Chrome + скриншоты (нужен puppeteer)
+node tests/screenshot-test.js    # прогон в headless Chrome + скриншоты
 ```
+
+Состояние проекта и план развития — в [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Лицензия
 
