@@ -40,6 +40,16 @@
     color:#7f93b8; background:rgba(8,10,20,.5); padding:6px 10px; border-radius:8px}
   .boost-tag{position:absolute; right:14px; bottom:12px; font-size:22px; font-weight:900; font-style:italic;
     letter-spacing:3px; color:var(--cyan); opacity:0; text-shadow:0 0 22px rgba(41,230,255,.95)}
+  .air-tag{position:absolute; left:50%; top:16%; transform:translateX(-50%); font-size:17px; font-weight:900;
+    font-style:italic; letter-spacing:4px; color:var(--gold); opacity:0; text-shadow:0 0 18px rgba(255,198,61,.85)}
+  .drift-wrap{position:absolute; left:50%; bottom:84px; transform:translateX(-50%); text-align:center;
+    opacity:0; transition:opacity .18s}
+  .drift-wrap.on{opacity:1}
+  .drift-num{font-size:40px; font-weight:900; font-style:italic; letter-spacing:-1px; color:#fff;
+    text-shadow:0 0 22px rgba(255,45,149,.9), 0 3px 0 rgba(0,0,0,.5)}
+  .drift-lbl{font-size:11px; letter-spacing:4px; color:#ff9ecb; margin-top:-4px}
+  .rivals{display:flex; gap:3px; margin-top:7px}
+  .rival{width:9px; height:9px; border-radius:2px; background:rgba(255,255,255,.18)}
 
   /* ---------- Тач-кнопки ---------- */
   .touch{position:absolute; inset:auto 0 0 0; display:none; justify-content:space-between;
@@ -51,6 +61,8 @@
   .tbtn:active{background:radial-gradient(circle at 35% 30%,rgba(41,230,255,.6),rgba(8,10,20,.9))}
   .nitro-btn{width:96px; font-size:15px; letter-spacing:2px; border-color:rgba(255,198,61,.6);
     background:radial-gradient(circle at 35% 30%,rgba(255,198,61,.35),rgba(8,10,20,.75))}
+  .drift-btn{width:82px; height:82px; font-size:13px; letter-spacing:2px; border-color:rgba(255,45,149,.65);
+    background:radial-gradient(circle at 35% 30%,rgba(255,45,149,.35),rgba(8,10,20,.75))}
   .pad{display:flex; gap:14px}
 
   /* ---------- Оверлей ---------- */
@@ -65,7 +77,9 @@
     .rules{font-size:12.5px; line-height:1.7}
     #startBtn{padding:12px 34px; font-size:15px}
     #speedVal{font-size:34px}
-    .bar{width:140px}
+    .bar{width:132px}
+    .drift-num{font-size:30px}
+    .drift-wrap{bottom:104px}
   }
   .card{text-align:center; padding:28px 34px; border-radius:18px;
     background:linear-gradient(180deg,rgba(14,16,32,.92),rgba(10,10,20,.92));
@@ -103,21 +117,30 @@
         <div class="bar dmg"><i id="dmgFill"></i></div>
       </div>
       <div class="panel">
-        <div class="stat"><span class="k">ДИСТАНЦИЯ</span><span class="v"><b id="distVal">0</b> м</span></div>
-        <div class="stat"><span class="k">РЕКОРД</span><span class="v"><b id="bestVal">0</b> м</span></div>
-        <div class="stat"><span class="k">ОБГОНЫ</span><span class="v"><b id="passVal">0</b></span></div>
+        <div class="stat"><span class="k">ПОЗИЦИЯ</span><span class="v"><b id="placeVal">5</b>/<span id="totalVal">5</span></span></div>
+        <div class="stat"><span class="k">КРУГ</span><span class="v"><b id="lapVal">1</b>/<span id="lapsVal">3</span></span></div>
+        <div class="stat"><span class="k">ВРЕМЯ</span><span class="v"><b id="timeVal">0:00</b></span></div>
+        <div class="stat"><span class="k">ЛУЧШЕЕ</span><span class="v"><b id="bestVal">—</b></span></div>
         <div class="stat"><span class="k">ЗВУК</span><span class="v" id="soundVal">вкл</span></div>
       </div>
     </div>
     <div id="flash"></div>
     <div class="boost-tag" id="boostTag">NITRO</div>
-    <div class="hint" id="hint">← → или A/D — руль · SHIFT — нитро · P — пауза · M — звук</div>
+    <div class="air-tag" id="airTag">В ВОЗДУХЕ</div>
+    <div class="drift-wrap" id="driftWrap">
+      <div class="drift-num" id="driftNum">0</div>
+      <div class="drift-lbl">ДРИФТ</div>
+    </div>
+    <div class="hint" id="hint">← → руль · SHIFT нитро · X дрифт · P пауза · M звук</div>
     <div class="touch" id="touch">
       <div class="pad">
         <button class="tbtn" id="btnLeft">◀</button>
         <button class="tbtn" id="btnRight">▶</button>
       </div>
-      <button class="tbtn nitro-btn" id="btnNitro">NITRO</button>
+      <div class="pad">
+        <button class="tbtn drift-btn" id="btnDrift">DRIFT</button>
+        <button class="tbtn nitro-btn" id="btnNitro">NITRO</button>
+      </div>
     </div>
   </div>
 
@@ -221,7 +244,13 @@
     nitroDrain: 42,
     nitroRefill: 6.5,
     nitroBoostSpeed: 1.3,
-    nitroBoostAccel: 2.1
+    nitroBoostAccel: 2.1,
+    gravity: 13000,             // гравитация для полёта с трамплина
+    rampMinSpeed: 5200,          // ниже этой скорости трамплин не «выстреливает»
+    driftMinSpeed: 4200,
+    driftScoreRate: 2100,
+    raceLaps: 3,
+    rivals: 4
   };
 
   const COLORS = {
@@ -276,6 +305,17 @@
   const HILL = { NONE: 0, LOW: 20, MEDIUM: 40, HIGH: 60 };
   const CURVE = { NONE: 0, EASY: 2, MEDIUM: 4, HARD: 5 };
 
+  // Трамплин: разгонный подъём → крутая кромка → обрыв. Сегменты кромки помечаются
+  // ramp:true, на них машина «выстреливает» в воздух, а дорога уходит вниз.
+  function addRamp() {
+    addRoad(30, 20, 6, 0, 13);            // подъём на +2600 ед. (≈26 м)
+    const crest = segments.length;
+    addRoad(3, 5, 3, 0, 6);               // кромка отрыва
+    for (let k = Math.max(crest, segments.length - 3); k < segments.length; k++) segments[k].ramp = true;
+    addRoad(2, 8, 2, 0, -19);             // обрыв: дорога падает на 3800 ед.
+    addRoad(20, 40, 20, 0, 0);            // зона приземления
+  }
+
   function buildTrack() {
     segments.length = 0;
     rnd = mulberry32(20260910);
@@ -293,6 +333,7 @@
       ][kind];
       addRoad(Math.floor(len * 0.4), len, Math.floor(len * 0.4), curve, hill);
       if (rnd() < 0.5) addRoad(20, 30, 20, 0, 0);                 // короткая развязка-прямая
+      if (i === 5 || i === 11) addRamp();                          // два трамплина за круг
     }
     // возвращаем высоту и поворот к нулю, чтобы петля стыковалась без стыка
     addRoad(60, 60, 60, 0, -lastY() / SEG);
@@ -308,14 +349,20 @@
   /* --------------------------------------------------------------- объекты */
   const player = {
     x: 0, position: 0, speed: 0, damage: 0, nitro: CFG.nitroMax,
-    boost: 0, shake: 0, steerVis: 0
+    boost: 0, shake: 0, steerVis: 0,
+    // полёт с трамплина
+    air: false, airY: 0, airWorldY: 0, vy: 0, airTime: 0, groundY: 0,
+    // дрифт
+    drift: false, driftAngle: 0, driftTime: 0, driftScore: 0, driftDir: 0, driftTotal: 0,
+    // гонка
+    lap: 0, progress: 0, place: CFG.rivals + 1, prevPosition: 0
   };
   const camera = { depth: 1 / Math.tan((CFG.fieldOfView / 2) * Math.PI / 180) };
   const playerZ = CFG.cameraHeight * camera.depth;
 
   const cars = [];
   const pickups = [];
-  const CAR_COUNT = 12;   // машин в мире (не в кадре — они размазаны по трассе)
+  const CAR_COUNT = 10;   // машин в мире (не в кадре — они размазаны по трассе)
 
   function laneOffset(i) { return -1 + (2 * i + 1) / LANES; }   // центры полос
 
@@ -337,21 +384,79 @@
       hitFlash: 0
     };
   }
+  // Соперники гонки: живут в том же массиве cars, но с флагом racer —
+  // так они бесплатно получают ИИ объезда, столкновения и отрисовку.
+  const RIVAL_DEFS = [
+    { name: 'ВОЛЬТ', body: '#ff3b3b' },
+    { name: 'АЙС',   body: '#8ef0ff' },
+    { name: 'НИКС',  body: '#a97bff' },
+    { name: 'ШАРК',  body: '#ffd23d' }
+  ];
+  function spawnRival(i) {
+    const def = RIVAL_DEFS[i % RIVAL_DEFS.length];
+    const speed = rand(9300, 11400);
+    const lane = laneOffset(i % LANES);
+    return {
+      racer: true, name: def.name,
+      color: { body: def.body, glass: '#16263a' },
+      z: increase(player.position, 900 + i * 900, trackLength),
+      x: lane, targetX: lane,
+      speed: speed, baseSpeed: speed, rubber: 1,
+      timer: rand(3, 8), passed: false, miss: false, brake: false, hitFlash: 0,
+      lap: 0, prevZ: 0, progress: 0
+    };
+  }
+
   function resetWorld() {
     cars.length = 0;
     pickups.length = 0;
+    skidSegs.length = 0;
+    for (let i = 0; i < segments.length; i++) segments[i].skid = null;
     for (let i = 0; i < CAR_COUNT; i++) {
       const c = spawnCar(rand(6000, 150000));
       c.targetX = c.x;
       cars.push(c);
+    }
+    for (let i = 0; i < CFG.rivals; i++) {
+      const r = spawnRival(i);
+      r.prevZ = r.z;
+      cars.push(r);                       // соперники сразу на решётке впереди игрока
     }
     for (let i = 0; i < 6; i++) {
       pickups.push({ z: increase(player.position, rand(8000, 90000), trackLength), x: laneOffset(randInt(0, LANES - 1)) });
     }
   }
 
+  // Позиция в гонке: сравниваем суммарный прогресс (круги + путь по трассе).
+  function computePlaces() {
+    player.progress = player.lap * trackLength + player.position;
+    let place = 1;
+    for (let i = 0; i < cars.length; i++) {
+      const c = cars[i];
+      if (!c.racer) continue;
+      c.progress = c.lap * trackLength + c.z;
+      if (c.progress > player.progress + 150) place++;
+    }
+    player.place = place;
+  }
+  function formatTime(sec) {
+    if (!(sec >= 0)) sec = 0;
+    const m = Math.floor(sec / 60);
+    const ss = Math.floor(sec % 60);
+    const ms = Math.floor((sec % 1) * 1000);
+    return m + ':' + (ss < 10 ? '0' : '') + ss + '.' + (ms < 100 ? (ms < 10 ? '00' : '0') : '') + ms;
+  }
+  function finishRace() {
+    state = 'finish';
+    computePlaces();
+    Sound.silence();
+    Sound.blip(1180, 0.5, 'triangle', 0.1);
+    if (bestTime === null || runTime < bestTime) { bestTime = runTime; saveBestTime(); }
+    overlayShow('finish');
+  }
+
   /* ---------------------------------------------------------------- ввод */
-  const input = { left: false, right: false, nitro: false, steer: 0 };
+  const input = { left: false, right: false, nitro: false, driftKey: false, steer: 0 };
   const keys = Object.create(null);
 
   function keyDown(code) {
@@ -365,6 +470,7 @@
     input.left = !!(keys.ArrowLeft || keys.KeyA);
     input.right = !!(keys.ArrowRight || keys.KeyD);
     input.nitro = !!(keys.ShiftLeft || keys.ShiftRight || keys.Space);
+    input.driftKey = !!keys.KeyX;
     const target = (input.left ? -1 : 0) + (input.right ? 1 : 0);
     input.steer += (target - input.steer) * Math.min(1, dt * 9);
   }
@@ -422,9 +528,11 @@
   const canvas = $('game');
   const ctx = canvas.getContext('2d');
   const el = {
-    speed: $('speedVal'), nitro: $('nitroFill'), dmg: $('dmgFill'),
-    dist: $('distVal'), best: $('bestVal'), pass: $('passVal'), sound: $('soundVal'),
+    speed: $('speedVal'), nitro: $('nitroFill'), dmg: $('dmgFill'), sound: $('soundVal'),
+    place: $('placeVal'), total: $('totalVal'), lap: $('lapVal'), laps: $('lapsVal'),
+    time: $('timeVal'), best: $('bestVal'),
     flash: $('flash'), boost: $('boostTag'), hint: $('hint'),
+    driftWrap: $('driftWrap'), driftNum: $('driftNum'), airTag: $('airTag'),
     overlay: $('overlay'), startBtn: $('startBtn'), ovSub: $('ovSub'),
     ovRules: $('ovRules'), ovSmall: $('ovSmall'), touch: $('touch')
   };
@@ -439,9 +547,15 @@
     canvas.height = Math.floor(H * DPR);
   }
 
-  let best = 0;
+  let best = 0;              // рекорд дистанции (внутренняя метрика)
+  let bestTime = null;       // рекорд времени гонки — его показываем в HUD
   try { best = parseInt(localStorage.getItem('nitro_highway_best') || '0', 10) || 0; } catch (e) { best = 0; }
+  try {
+    const v = parseFloat(localStorage.getItem('nitro_best_time'));
+    if (isFinite(v) && v > 0) bestTime = v;
+  } catch (e) { bestTime = null; }
   function saveBest() { try { localStorage.setItem('nitro_highway_best', String(best)); } catch (e) {} }
+  function saveBestTime() { try { localStorage.setItem('nitro_best_time', String(bestTime)); } catch (e) {} }
 
   let state = 'menu';            // menu | play | pause | crash
   let distance = 0, passed = 0, runTime = 0;
@@ -456,9 +570,10 @@
   }
   function overlayShow(kind, stats) {
     const t = {
-      menu: { sub: 'аркадный прототип шоссе', btn: 'СТАРТ' },
+      menu: { sub: 'гонка по шоссе · 3 круга · 4 соперника', btn: 'СТАРТ' },
       pause: { sub: 'пауза', btn: 'ПРОДОЛЖИТЬ' },
-      crash: { sub: 'авария', btn: 'ЗАНОВО' }
+      crash: { sub: 'авария', btn: 'ЗАНОВО' },
+      finish: { sub: 'финиш', btn: 'ЕЩЁ РАЗ' }
     }[kind];
     el.overlay.classList.remove('hide');
     el.ovSub.textContent = t.sub;
@@ -466,21 +581,32 @@
     if (kind === 'menu') {
       el.ovRules.innerHTML = '<b>Управление</b><br>' +
         '<kbd>←</kbd> <kbd>→</kbd> или <kbd>A</kbd> <kbd>D</kbd> — руль<br>' +
-        '<kbd>SHIFT</kbd> или <kbd>SPACE</kbd> — нитро<br>' +
+        '<kbd>SHIFT</kbd> или <kbd>SPACE</kbd> — нитро &nbsp;·&nbsp; <kbd>X</kbd> — дрифт<br>' +
         '<kbd>P</kbd> — пауза, <kbd>M</kbd> — звук<br><br>' +
-        '<b>Цель</b><br>Не биться о трафик и барьеры, собирать синие баллоны нитро ' +
-        'и проехать как можно дальше.';
+        '<b>Цель гонки</b><br>' +
+        'Проехать ' + CFG.raceLaps + ' круга и обогнать ' + CFG.rivals + ' соперников.<br>' +
+        'Дрифт и прыжки с трамплинов копят нитро. Трафик — это препятствие.';
       el.ovSmall.textContent = 'прототип, вдохновлённый аркадными гонками';
     } else if (kind === 'pause') {
-      el.ovRules.innerHTML = 'ДИСТАНЦИЯ: <b>' + Math.round(distance) + ' м</b><br>' +
-        'ОБГОНЫ: <b>' + passed + '</b><br>' +
-        'ТЕКУЩАЯ СКОРОСТЬ: <b>' + Math.round(player.speed * CFG.kmh) + ' км/ч</b>';
+      el.ovRules.innerHTML = 'КРУГ: <b>' + Math.min(player.lap + 1, CFG.raceLaps) + '/' + CFG.raceLaps + '</b><br>' +
+        'ПОЗИЦИЯ: <b>' + player.place + '/' + (CFG.rivals + 1) + '</b><br>' +
+        'ВРЕМЯ: <b>' + formatTime(runTime) + '</b><br>' +
+        'СОСТОЯНИЕ: <b>' + Math.max(0, Math.round(100 - player.damage)) + '%</b>';
       el.ovSmall.textContent = '';
-    } else {
-      el.ovRules.innerHTML = 'ВЫ ПРОЕХАЛИ: <b>' + Math.round(distance) + ' м</b><br>' +
+    } else if (kind === 'finish') {
+      const win = player.place === 1;
+      el.ovRules.innerHTML = '<b>' + (win ? 'ПОБЕДА!' : 'ФИНИШ: ' + player.place + ' МЕСТО') + '</b><br><br>' +
+        'ВРЕМЯ: <b>' + formatTime(runTime) + '</b><br>' +
+        'ЛУЧШЕЕ ВРЕМЯ: <b>' + (bestTime === null ? '—' : formatTime(bestTime)) + '</b><br>' +
         'ОБГОНОВ: <b>' + passed + '</b><br>' +
-        'РЕКОРД: <b>' + best + ' м</b>';
-      el.ovSmall.textContent = distance >= best && distance > 0 ? 'НОВЫЙ РЕКОРД!' : 'попробуйте ещё раз';
+        'ОЧКОВ ЗА ДРИФТ: <b>' + player.driftTotal + '</b>';
+      el.ovSmall.textContent = win ? 'ни один соперник не устоял' : 'попробуйте отыграть позиции';
+    } else {
+      el.ovRules.innerHTML = 'РАЗБИЛИ МАШИНУ НА КРУГЕ <b>' + Math.min(player.lap + 1, CFG.raceLaps) + '</b><br>' +
+        'ПРОЙДЕНО: <b>' + Math.round(distance) + ' м</b><br>' +
+        'ПОЗИЦИЯ: <b>' + player.place + '/' + (CFG.rivals + 1) + '</b><br>' +
+        'ВРЕМЯ: <b>' + formatTime(runTime) + '</b>';
+      el.ovSmall.textContent = 'аккуратнее с трафиком и отбойниками';
     }
   }
   function overlayHide() { el.overlay.classList.add('hide'); }
@@ -494,13 +620,19 @@
     el.sound.textContent = Sound.on ? 'вкл' : 'выкл';
     if (!Sound.on) Sound.silence();
   }
-  function startRun() {
-    player.x = -0.25; player.position = 0; player.speed = 3000; player.damage = 0;
+  function startRun(skipCountdown) {
+    player.x = -0.25; player.position = 0; player.speed = 0; player.damage = 0;
     player.nitro = CFG.nitroMax; player.boost = 0; player.shake = 0;
+    player.air = false; player.airY = 0; player.vy = 0; player.airTime = 0;
+    player.drift = false; player.driftAngle = 0; player.driftScore = 0; player.driftTime = 0;
+    player.lap = 0; player.prevPosition = 0; player.progress = 0; player.place = CFG.rivals + 1;
+    player.driftTotal = 0;
     distance = 0; passed = 0; runTime = 0;
+    smoke.length = 0;
     Sound.init(); Sound.resume();
     resetWorld();
     overlayHide();
+    countdown = skipCountdown ? 0 : 3.4;      // 3-2-1-СТАРТ перед гонкой
     state = 'play';
   }
   function crash() {
@@ -512,7 +644,7 @@
   }
 
   el.startBtn.addEventListener('click', function () {
-    if (state === 'menu' || state === 'crash') startRun();
+    if (state === 'menu' || state === 'crash' || state === 'finish') startRun(false);
     else if (state === 'pause') togglePause();
   });
   el.overlay.addEventListener('click', function (e) { if (e.target === el.overlay && state === 'pause') togglePause(); });
@@ -545,8 +677,73 @@
   /* --------------------------------------------------------- обновление мира */
   let playerY = 0;
   let scrapeTimer = 0;      // троттлинг звука скрежета о барьер
+  let driftSfxTimer = 0;
+  let countdown = 0;        // обратный отсчёт перед стартом
+
+  // Следы шин: каждая полоса хранится в своём сегменте, поэтому «прилипает» к асфальту.
+  const skidSegs = [];
+  function addSkid(pos, x, dir) {
+    const seg = findSegment(pos);
+    if (!seg) return;
+    if (!seg.skid) { seg.skid = [null, null, null, null]; skidSegs.push(seg); }
+    const w = 0.058;
+    const base = dir >= 0 ? 0 : 2;
+    for (let s = -1; s <= 1; s += 2) {
+      const slot = base + (s + 1) / 2;
+      seg.skid[slot] = { x: clamp(x + s * w, -1.02, 1.02), a: 0.5 };
+    }
+  }
+  function decaySkid(dt) {
+    for (let i = skidSegs.length - 1; i >= 0; i--) {
+      const seg = skidSegs[i];
+      let alive = false;
+      for (let k = 0; k < seg.skid.length; k++) {
+        const mk = seg.skid[k];
+        if (!mk) continue;
+        mk.a -= dt * 0.055;
+        if (mk.a > 0.02) alive = true; else seg.skid[k] = null;
+      }
+      if (!alive) { seg.skid = null; skidSegs.splice(i, 1); }
+    }
+  }
+
+  // Дым из-под колёс (экранные частицы)
+  const smoke = [];
+  function spawnSmoke(n, spread) {
+    const h = Math.max(70, H * 0.19);
+    const cx = W / 2 + player.x * W * 0.10;
+    const cy = H * 0.93;
+    const count = n || 2;
+    for (let k = 0; k < count; k++) {
+      if (smoke.length > 90) break;
+      const s = (k % 2 === 0) ? -1 : 1;
+      smoke.push({
+        x: cx + s * h * 0.60 + (rnd() - 0.5) * h * 0.2,
+        y: cy - h * 0.08 + (rnd() - 0.5) * h * 0.1,
+        r: h * (0.07 + rnd() * 0.05),
+        a: 0.30 + rnd() * 0.15,
+        vy: -h * (0.3 + rnd() * 0.3),
+        vx: (s * 0.4 + (rnd() - 0.5)) * h * (spread || 1)
+      });
+    }
+  }
+  function updateSmoke(dt) {
+    for (let i = smoke.length - 1; i >= 0; i--) {
+      const q = smoke[i];
+      q.a -= dt * 0.85;
+      q.r += dt * 95;
+      q.y += q.vy * dt;
+      q.x += q.vx * dt;
+      if (q.a <= 0) smoke.splice(i, 1);
+    }
+  }
 
   function updatePlayer(dt) {
+    if (countdown > 0) {                 // 3-2-1-СТАРТ: все стоят на решётке
+      countdown -= dt;
+      player.speed = 0;
+      return;
+    }
     const startSeg = findSegment(player.position);
     const speedPct = player.speed / CFG.maxSpeed;
 
@@ -569,8 +766,8 @@
     // руль + центробежная сила.
     // Минимум 0.22 — чтобы можно было вывернуть руль даже на почти нулевой скорости
     // (иначе машина навсегда застревает у отбойника).
-    const dx = dt * 2.6 * Math.max(0.22, speedPct);
-    player.x += input.steer * dx;
+    const dx = dt * 2.6 * Math.max(0.22, speedPct) * (player.air ? 0 : 1);
+    player.x += (player.air ? 0 : input.steer) * dx;
     // аркадная помощь: без руля снос заметно слабее, а машина сама стремится к осевой
     const handsOff = 1 - Math.abs(input.steer);
     player.x -= dx * speedPct * startSeg.curve * CFG.centrifugal * (0.35 + 0.65 * Math.abs(input.steer));
@@ -579,12 +776,39 @@
     // влияние рельефа
     player.speed += (startSeg.p2.world.y - startSeg.p1.world.y) / SEG * 3400 * dt;
 
+    // ---- ДРИФТ (X) ----
+    const wantDrift = input.driftKey && player.speed > CFG.driftMinSpeed && !player.air;
+    if (wantDrift) {
+      if (!player.drift) { player.drift = true; player.driftTime = 0; player.driftScore = 0; }
+      player.driftTime += dt;
+      const dir = input.steer !== 0 ? (input.steer > 0 ? 1 : -1) : (player.driftDir || 1);
+      player.driftDir = dir;
+      player.driftAngle += (dir * 0.55 - player.driftAngle) * Math.min(1, dt * 2.6);
+      player.x += dir * dt * 0.72 * speedPct;              // боковое скольжение
+      player.speed -= 900 * dt;                            // трение шин о асфальт
+      player.driftScore += dt * CFG.driftScoreRate * (0.5 + Math.abs(player.driftAngle)) * (0.55 + speedPct);
+      addSkid(player.position, player.x, dir);
+      spawnSmoke(2, 0.8);
+      driftSfxTimer -= dt;
+      if (driftSfxTimer <= 0) { driftSfxTimer = 0.1; Sound.blip(1750 + rnd() * 800, 0.07, 'sawtooth', 0.02); }
+    } else if (player.drift) {
+      player.drift = false;
+      if (player.driftTime > 0.5 && player.driftScore > 120) {
+        const pts = Math.round(player.driftScore);
+        player.driftTotal += pts;
+        player.nitro = Math.min(CFG.nitroMax, player.nitro + clamp(pts / 130, 3, 24));
+        flash('ДРИФТ +' + pts, '#ff2d95', 1.0);
+        Sound.blip(1040, 0.14, 'triangle', 0.07);
+      }
+      player.driftScore = 0; player.driftAngle = 0; player.driftTime = 0;
+    }
+
     // ограничение скорости
     const maxSpeed = CFG.maxSpeed * (player.boost > 0.5 ? CFG.nitroBoostSpeed : 1);
     if (player.speed > maxSpeed) player.speed += Math.max(-CFG.accel * 3 * dt, maxSpeed - player.speed);
 
-    // выезд за отбойник — скрежет, потеря скорости, урон
-    if (Math.abs(player.x) > 1) {
+    // выезд за отбойник — скрежет, потеря скорости, урон (в полёте барьера нет)
+    if (Math.abs(player.x) > 1 && !player.air) {
       const over = Math.abs(player.x) - 1;
       player.x = (player.x < 0 ? -1 : 1) * Math.min(1, Math.abs(player.x));
       // скорость проседает, но не в ноль: иначе машина «прилипает» к барьеру
@@ -603,6 +827,52 @@
     player.position = increase(player.position, player.speed * dt, trackLength);
     player.speed = clamp(player.speed, 0, CFG.maxSpeed * CFG.nitroBoostSpeed);
 
+    // ---- вертикальная динамика: трамплин и полёт ----
+    const pSeg = findSegment(player.position + playerZ);
+    const groundY = lerp(pSeg.p1.world.y, pSeg.p2.world.y, percentRemaining(player.position + playerZ, SEG));
+    player.groundY = groundY;
+    if (player.air) {
+      player.vy -= CFG.gravity * dt;
+      player.airWorldY += player.vy * dt;
+      player.airTime += dt;
+      player.airY = player.airWorldY - groundY;
+      player.shake = Math.max(player.shake, 0.22);
+      if (player.airY <= 0 && player.airTime > 0.1) {       // приземление (не в кадре отрыва)
+        player.airWorldY = groundY;
+        player.airY = 0;
+        player.air = false;
+        player.shake = Math.max(player.shake, 0.6);
+        spawnSmoke(12, 1.6);
+        Sound.blip(120, 0.22, 'square', 0.09);
+        if (player.airTime > 0.55) {
+          player.nitro = Math.min(CFG.nitroMax, player.nitro + 14);
+          flash('ПРИЗЕМЛЕНИЕ! +НИТРО', '#29e6ff', 0.9);
+        } else {
+          flash('ПРЫЖОК', '#ffc63d', 0.6);
+        }
+        player.airTime = 0;
+      }
+    } else {
+      player.airWorldY = groundY;
+      player.airY = 0;
+      if (startSeg.ramp && player.speed > CFG.rampMinSpeed && Math.abs(player.x) <= 1) {
+        player.air = true;
+        player.airTime = 0;
+        player.vy = player.speed * 0.5 + 900;              // импульс от кромки трамплина
+        flash('ТРАМПЛИН!', '#ffc63d', 0.7);
+        Sound.blip(430, 0.16, 'triangle', 0.06);
+      }
+    }
+
+    // ---- круги ----
+    if (player.position < player.prevPosition - trackLength / 2) {
+      player.lap++;
+      if (player.lap >= CFG.raceLaps) { finishRace(); return; }
+      flash('КРУГ ' + (player.lap + 1) + '/' + CFG.raceLaps, '#29e6ff', 1.2);
+      Sound.blip(780, 0.16, 'triangle', 0.07);
+    }
+    player.prevPosition = player.position;
+
     // визуальный крен руля
     player.steerVis += (input.steer - player.steerVis) * Math.min(1, dt * 6);
 
@@ -616,18 +886,35 @@
   }
 
   function updateTraffic(dt) {
+    if (countdown > 0) return;                      // соперники тоже ждут старта
     const speedPct = player.speed / CFG.maxSpeed;   // для расчёта силы удара
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
       car.z = increase(car.z, car.speed * dt, trackLength);
       car.hitFlash = Math.max(0, car.hitFlash - dt * 2);
 
+      // соперники гонки: считаем круги и держим плотную борьбу (аркадный «резинка»-баланс)
+      if (car.racer) {
+        if (car.z + trackLength / 2 < car.prevZ) car.lap++;
+        car.prevZ = car.z;
+        let gap = (car.z - player.position + trackLength) % trackLength;
+        if (gap > trackLength / 2) gap -= trackLength;
+        car.rubber = gap < -45000 ? 1.3 : (gap < -20000 ? 1.18 : (gap > 30000 ? 0.9 : 1));
+      }
+
       // смена полосы
       car.timer -= dt;
       if (car.timer <= 0) {
         car.timer = rand(2.5, 7);
-        // перестраиваемся в соседнюю полосу (иногда — чтобы уступить, иногда — чтобы помешать)
-        car.targetX = clamp(laneOffset(randInt(0, LANES - 1)) + rand(-0.07, 0.07), -0.84, 0.84);
+        if (car.racer) {
+          // соперник ищет внутреннюю траекторию поворота
+          const rs = findSegment(car.z);
+          const lanes = rs.curve > 0.6 ? [0.25, 0.75] : (rs.curve < -0.6 ? [-0.75, -0.25] : [-0.25, 0.25]);
+          car.targetX = clamp(lanes[randInt(0, 1)] + rand(-0.05, 0.05), -0.84, 0.84);
+        } else {
+          // трафик перестраивается в случайную полосу: иногда уступает, иногда мешает
+          car.targetX = clamp(laneOffset(randInt(0, LANES - 1)) + rand(-0.07, 0.07), -0.84, 0.84);
+        }
       }
 
       // не врезаться в того, кто впереди: притормозить и уйти в сторону
@@ -643,7 +930,11 @@
         }
       }
       car.brake = braking;
-      if (!braking) car.speed += (car.baseSpeed - car.speed) * 0.25 * dt;   // плавно возвращаем крейсерскую скорость
+      if (!braking) {
+        const cruise = car.baseSpeed * (car.rubber || 1);
+        car.speed += (cruise - car.speed) * 0.25 * dt;    // плавно возвращаем крейсерскую скорость
+        if (car.racer) car.speed = clamp(car.speed, 2600, CFG.maxSpeed * 1.02);
+      }
       car.x += (car.targetX - car.x) * Math.min(1, dt * 1.6);
 
       // столкновение с игроком
@@ -652,17 +943,18 @@
       const nearPlayerZ = Math.abs(dz - playerZ);
       const dxAbs = Math.abs(car.x - player.x);
 
-      if (nearPlayerZ < 330 && dxAbs < 0.36) {
+      const flying = player.air && player.airY > 240;      // пролетаем над машинами
+      if (!flying && nearPlayerZ < 330 && dxAbs < 0.36) {
         // удар
         player.speed = Math.max(1200, player.speed * 0.42);
-        player.damage += 8 + speedPct * 7;
+        player.damage += car.racer ? (6 + speedPct * 5) : (6 + speedPct * 5);
         player.nitro = Math.max(0, player.nitro - 12);
         player.shake = 1;
         car.speed = Math.max(1800, car.speed * 0.85);
         car.x = clamp(car.x + (car.x >= player.x ? 1 : -1) * 0.18, -0.9, 0.9);
         car.targetX = car.x;
         car.hitFlash = 1;
-        flash('УДАР!', '#ff5a5a', 0.7);
+        flash(car.racer ? 'СОПЕРНИК!' : 'УДАР!', '#ff5a5a', 0.7);
         Sound.blip(120, 0.25, 'sawtooth', 0.14);
         if (player.damage >= 100) { crash(); return; }
       } else if (!car.miss && nearPlayerZ < 620 && dxAbs >= 0.36 && dxAbs < 0.86) {
@@ -679,13 +971,21 @@
       // ВАЖНО: считаем именно знаковое расстояние, иначе «далеко впереди» путается с «позади».
       let behind = (car.z - player.position + trackLength) % trackLength;
       if (behind > trackLength / 2) behind -= trackLength;      // > 0 — впереди, < 0 — позади
-      if (behind < -45000) {
+      if (behind < -45000 && !car.racer) {
         const nb = spawnCar(rand(40000, 150000));
         nb.targetX = nb.x;
         nb.passed = false;
         cars[i] = nb;
+      } else if (car.racer && behind < -70000 && car.lap <= player.lap) {
+        // соперник безнадёжно отстал — возвращаем его в борьбу (как в аркадных гонках)
+        car.z = increase(player.position, rand(12000, 24000), trackLength);
+        car.prevZ = car.z;
+        car.lap = player.lap;
+        car.speed = car.baseSpeed;
       }
     }
+
+    computePlaces();
 
     // баллоны нитро
     for (let i = 0; i < pickups.length; i++) {
@@ -823,6 +1123,19 @@
       const r1L = p1.x - p1.w, r1R = p1.x + p1.w, r2L = p2.x - p2.w, r2R = p2.x + p2.w;
       poly(r1L, p1.y, r1R, p1.y, r2R, p2.y, r2L, p2.y, c.road, seg.fog);
 
+      // следы шин после дрифта — лежат прямо на асфальте
+      if (seg.skid) {
+        for (let k = 0; k < seg.skid.length; k++) {
+          const mk = seg.skid[k];
+          if (!mk || mk.a <= 0.02) continue;
+          ctx.globalAlpha = Math.min(0.8, mk.a * 1.5);
+          poly(p1.x + (mk.x - 0.022) * p1.w, p1.y, p1.x + (mk.x + 0.022) * p1.w, p1.y,
+               p2.x + (mk.x + 0.022) * p2.w, p2.y, p2.x + (mk.x - 0.022) * p2.w, p2.y,
+               '#0a0b10', seg.fog);
+          ctx.globalAlpha = 1;
+        }
+      }
+
       const near = n < n0 * 0.6;
 
       // обочина: широкие полосы у краёв — дают ощущение скорости даже боковым зрением
@@ -849,6 +1162,16 @@
           // тонкая тёмная полоса у основания — «привязывает» парапет к земле
           poly(xIn1, p1.y, xIn1, p1.y - h1 * 0.08, xIn2, t2 + h2 * 0.92, xIn2, p2.y, 'rgba(0,0,0,0.3)', seg.fog);
         }
+      }
+
+      // маркер трамплина: жёлтая предупреждающая полоса на кромке отрыва
+      if (seg.ramp) {
+        poly(p1.x - 0.98 * p1.w, p1.y, p1.x + 0.98 * p1.w, p1.y,
+             p2.x + 0.98 * p2.w, p2.y, p2.x - 0.98 * p2.w, p2.y, 'rgba(255,198,61,0.75)', seg.fog);
+        poly(p1.x - 0.90 * p1.w, p1.y, p1.x - 0.78 * p1.w, p1.y,
+             p2.x - 0.78 * p2.w, p2.y, p2.x - 0.90 * p2.w, p2.y, 'rgba(20,20,26,0.85)', seg.fog);
+        poly(p1.x + 0.78 * p1.w, p1.y, p1.x + 0.90 * p1.w, p1.y,
+             p2.x + 0.90 * p2.w, p2.y, p2.x + 0.78 * p2.w, p2.y, 'rgba(20,20,26,0.85)', seg.fog);
       }
 
       if (near) {
@@ -1104,7 +1427,7 @@
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(-player.steerVis * 0.035 - player.x * 0.02);
+    ctx.rotate(-player.steerVis * 0.035 - player.x * 0.02 + player.driftAngle * 0.55);
     // тень
     ctx.globalAlpha = 0.45;
     ctx.fillStyle = '#000';
@@ -1188,6 +1511,10 @@
       }
     }
     readInput(Math.min(dt, 0.1));
+    if (state === 'play' && countdown <= 0) {
+      decaySkid(dt);
+      updateSmoke(dt);
+    }
 
     if (state !== 'play') Sound.silence();
     else Sound.engine(player.speed / CFG.maxSpeed, player.boost > 0.5);
@@ -1203,8 +1530,8 @@
 
     const baseSegment = findSegment(player.position);
     const basePercent = percentRemaining(player.position, SEG);
-    const pSeg = findSegment(player.position + playerZ);
-    playerY = lerp(pSeg.p1.world.y, pSeg.p2.world.y, percentRemaining(player.position + playerZ, SEG));
+    // камера следует за машиной: в полёте — за её высотой, на земле — за рельефом
+    playerY = player.air ? player.airWorldY : (player.groundY || 0);
     bgOffset += (player.speed * 0.00035) + baseSegment.curve * 0.35;
     const horizonY = H / 2 + clamp(playerY / 420, -70, 70);
 
@@ -1233,6 +1560,16 @@
     renderRoad(baseSegment, basePercent);
     renderSprites(baseSegment, t);
     if (state !== 'menu') drawPlayerCar(t);
+
+    // дым из-под колёс
+    for (let i = 0; i < smoke.length; i++) {
+      const q = smoke[i];
+      ctx.globalAlpha = clamp(q.a, 0, 1);
+      ctx.fillStyle = '#e6ecf7';
+      ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     if (player.boost > 0.05) drawSpeedLines(t);
     drawVignette();
     ctx.restore();
@@ -1247,12 +1584,35 @@
     el.speed.textContent = String(Math.round(player.speed * CFG.kmh));
     el.nitro.style.width = (player.nitro / CFG.nitroMax * 100).toFixed(1) + '%';
     el.dmg.style.width = clamp(player.damage, 0, 100).toFixed(1) + '%';
-    el.dist.textContent = String(Math.round(distance));
-    el.best.textContent = String(Math.round(best));
-    el.pass.textContent = String(passed);
+    el.place.textContent = String(player.place);
+    el.total.textContent = String(CFG.rivals + 1);
+    el.lap.textContent = String(Math.min(player.lap + 1, CFG.raceLaps));
+    el.laps.textContent = String(CFG.raceLaps);
+    el.time.textContent = formatTime(runTime);
+    el.best.textContent = bestTime === null ? '—' : formatTime(bestTime);
     el.boost.style.opacity = player.boost > 0.15 ? String(Math.min(1, player.boost)) : '0';
 
-    if (flashTimer > 0) {
+    if (player.drift && player.driftScore > 60) {
+      el.driftWrap.classList.add('on');
+      el.driftNum.textContent = String(Math.round(player.driftScore));
+    } else {
+      el.driftWrap.classList.remove('on');
+    }
+    if (player.air) {
+      el.airTag.textContent = 'В ВОЗДУХЕ ' + player.airTime.toFixed(1) + ' с';
+      el.airTag.style.opacity = String(clamp(0.4 + player.airTime * 0.5, 0, 1));
+    } else {
+      el.airTag.style.opacity = '0';
+    }
+
+    if (countdown > 0) {
+      // отсчёт перед стартом
+      const n = Math.ceil(countdown - 0.4);
+      el.flash.textContent = n >= 3 ? '3' : n === 2 ? '2' : n === 1 ? '1' : 'СТАРТ!';
+      el.flash.style.color = n <= 1 ? '#7ef0ff' : '#ffdf6b';
+      el.flash.style.opacity = '1';
+      flashTimer = 0;
+    } else if (flashTimer > 0) {
       flashTimer -= dt;
       const o = clamp(flashTimer * 2.2, 0, 1);
       el.flash.style.opacity = o.toFixed(2);
@@ -1270,7 +1630,7 @@
 
   // тестовый хук: позволяет прогонять логику без DOM-событий
   window.__nitro = {
-    start: function () { buildTrack(); resize(); startRun(); },
+    start: function (realCountdown) { buildTrack(); resize(); startRun(!realCountdown); },
     tick: function (n, keyset) {
       keyset = keyset || {};
       Object.keys(keyset).forEach(function (k) { keys[k] = keyset[k]; });
@@ -1283,12 +1643,18 @@
     render: function () { frame((last || 0) + 16.7); },
     state: function () { return state; },
     // доступ к внутренностям — нужен автотестам и удобен для отладки в консоли
-    api: { player: player, cars: cars, pickups: pickups, segments: segments, CFG: CFG, camera: camera },
+    api: { player: player, cars: cars, pickups: pickups, segments: segments, CFG: CFG, camera: camera, skidSegs: skidSegs, smoke: smoke },
+    finishRace: function () { finishRace(); },
     info: function () {
       return {
         state: state, speed: player.speed, distance: distance, damage: player.damage,
         nitro: player.nitro, passed: passed, cars: cars.length,
-        segments: segments.length, trackLength: trackLength
+        segments: segments.length, trackLength: trackLength,
+        place: player.place, lap: player.lap, laps: CFG.raceLaps,
+        rivals: cars.filter(function (c) { return c.racer; }).length,
+        air: player.air, airTime: player.airTime, airY: player.airY,
+        drift: player.drift, driftTotal: player.driftTotal, driftScore: player.driftScore,
+        countdown: countdown, runTime: runTime, skid: skidSegs.length
       };
     }
   };

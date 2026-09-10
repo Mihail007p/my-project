@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check tests/scenario-test.js
           node --check tests/headless-test.js
+          node --check tests/race-test.js
           node --check tests/screenshot-test.js
 
       - name: Симуляция без DOM (60 секунд игры)
@@ -27,3 +28,6 @@ jobs:
 
       - name: Сценарии (удары, обгоны, барьер, трафик, нитро)
         run: node tests/scenario-test.js
+
+      - name: Гонка (соперники, круги, трамплин, дрифт, финиш)
+        run: node tests/race-test.js

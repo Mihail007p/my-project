@@ -150,7 +150,9 @@ API.player.nitro = 0;
 autopilot(600, { KeyW: true }, 9000);
 check('нитро восстанавливается само', API.player.nitro > 50, 'нитро ' + API.player.nitro.toFixed(0));
 API.player.nitro = 100;
-autopilot(180, { KeyW: true, ShiftLeft: true }, 9000);
+API.cars.length = 0;              // чистая дорога: проверяем именно буст, без ДТП
+// буст проверяем без «регулятора скорости» теста: держим только полосу
+for (let i = 0; i < 180; i++) { API.player.x = -0.25; N.tick(1, { KeyW: true, ShiftLeft: true }); }
 check('нитро расходуется при бусте', API.player.nitro < 25, 'нитро ' + API.player.nitro.toFixed(0));
 check('буст разгоняет выше обычного максимума', API.player.speed > API.CFG.maxSpeed,
       'скорость ' + Math.round(API.player.speed) + ' при максимуме ' + API.CFG.maxSpeed);
