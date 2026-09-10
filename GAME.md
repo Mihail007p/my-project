@@ -78,8 +78,8 @@ python3 -m http.server 8000
 
 ```bash
 node tests/headless-test.js      # загрузка и 60 секунд симуляции без DOM
-node tests/scenario-test.js      # 23 проверки: удары, обгоны, барьер, трафик, нитро, авария
-node tests/race-test.js          # 26 проверок: соперники, позиции, круги, трамплин, дрифт, финиш
+node tests/scenario-test.js      # 25 проверок: удары, обгоны, барьер, трафик, нитро, авария
+node tests/race-test.js          # 27 проверок: соперники, позиции, круги, трамплин, дрифт, финиш
 node tests/screenshot-test.js    # прогон в headless Chrome + скриншоты (нужен puppeteer)
 ```
 
