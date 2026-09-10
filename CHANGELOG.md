@@ -9,5 +9,8 @@
 ### Added
 
 - Базовая структура репозитория: README, лицензия, .gitignore, шаблоны GitHub.
+- Игра «Нитро-Шоссе» (`index.html`): псевдо-3D шоссе, трафик, нитро, урон, HUD.
+- Документация игры: `GAME.md`.
+- Автотесты: `tests/headless-test.js`, `tests/scenario-test.js`, `tests/screenshot-test.js`.
 
 [Unreleased]: https://github.com/Mihail007p/my-project/commits/main
