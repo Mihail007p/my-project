@@ -131,7 +131,7 @@
       <div class="drift-num" id="driftNum">0</div>
       <div class="drift-lbl">ДРИФТ</div>
     </div>
-    <div class="hint" id="hint">← → руль · SHIFT нитро · X дрифт · P пауза · M звук</div>
+    <div class="hint" id="hint">машина едет сама · ← → руль · SHIFT нитро · X дрифт · ↓ тормоз · P пауза · M звук</div>
     <div class="touch" id="touch">
       <div class="pad">
         <button class="tbtn" id="btnLeft">◀</button>
@@ -580,8 +580,10 @@
     el.startBtn.textContent = t.btn;
     if (kind === 'menu') {
       el.ovRules.innerHTML = '<b>Управление</b><br>' +
+        'Машина едет сама, как в аркадах.<br>' +
         '<kbd>←</kbd> <kbd>→</kbd> или <kbd>A</kbd> <kbd>D</kbd> — руль<br>' +
-        '<kbd>SHIFT</kbd> или <kbd>SPACE</kbd> — нитро &nbsp;·&nbsp; <kbd>X</kbd> — дрифт<br>' +
+        '<kbd>↑</kbd> — полный газ, <kbd>↓</kbd> — тормоз<br>' +
+        '<kbd>SHIFT</kbd> — нитро &nbsp;·&nbsp; <kbd>X</kbd> — дрифт<br>' +
         '<kbd>P</kbd> — пауза, <kbd>M</kbd> — звук<br><br>' +
         '<b>Цель гонки</b><br>' +
         'Проехать ' + CFG.raceLaps + ' круга и обогнать ' + CFG.rivals + ' соперников.<br>' +
@@ -620,6 +622,8 @@
     el.sound.textContent = Sound.on ? 'вкл' : 'выкл';
     if (!Sound.on) Sound.silence();
   }
+  // Небольшой рывок на «СТАРТ!», чтобы не отставать от соперников на первых метрах
+  const launch = { pending: false };
   function startRun(skipCountdown) {
     player.x = -0.25; player.position = 0; player.speed = 0; player.damage = 0;
     player.nitro = CFG.nitroMax; player.boost = 0; player.shake = 0;
@@ -633,6 +637,9 @@
     resetWorld();
     overlayHide();
     countdown = skipCountdown ? 0 : 3.4;      // 3-2-1-СТАРТ перед гонкой
+    hintTimer = 8;                            // подсказка живёт первые секунды заезда
+    el.hint.style.opacity = '1';
+    launch.pending = !skipCountdown;
     state = 'play';
   }
   function crash() {
@@ -679,6 +686,7 @@
   let scrapeTimer = 0;      // троттлинг звука скрежета о барьер
   let driftSfxTimer = 0;
   let countdown = 0;        // обратный отсчёт перед стартом
+  let hintTimer = 0;        // сколько секунд ещё показывать подсказку по управлению
 
   // Следы шин: каждая полоса хранится в своём сегменте, поэтому «прилипает» к асфальту.
   const skidSegs = [];
@@ -710,15 +718,16 @@
   // Дым из-под колёс (экранные частицы)
   const smoke = [];
   function spawnSmoke(n, spread) {
-    const h = Math.max(70, H * 0.19);
-    const cx = W / 2 + player.x * W * 0.10;
-    const cy = H * 0.93;
+    const size = heroSize();
+    const h = size.h;
+    const cx = heroX();
+    const cy = H * 0.905;
     const count = n || 2;
     for (let k = 0; k < count; k++) {
       if (smoke.length > 90) break;
       const s = (k % 2 === 0) ? -1 : 1;
       smoke.push({
-        x: cx + s * h * 0.60 + (rnd() - 0.5) * h * 0.2,
+        x: cx + s * size.w * 0.44 + (rnd() - 0.5) * h * 0.2,
         y: cy - h * 0.08 + (rnd() - 0.5) * h * 0.1,
         r: h * (0.07 + rnd() * 0.05),
         a: 0.30 + rnd() * 0.15,
@@ -744,16 +753,26 @@
       player.speed = 0;
       return;
     }
+    if (launch.pending) {                // рывок на старте
+      launch.pending = false;
+      player.speed = 2600;
+      Sound.blip(520, 0.18, 'triangle', 0.07);
+    }
     const startSeg = findSegment(player.position);
     const speedPct = player.speed / CFG.maxSpeed;
 
-    // ускорение / торможение
-    if (keys.ArrowUp || keys.KeyW) player.speed += CFG.accel * 1.05 * dt;
-    else if (keys.ArrowDown || keys.KeyS) player.speed += CFG.braking * dt;
-    else player.speed += CFG.decel * dt;
+    // Аркадный автогаз: машина разгоняется сама, как в Asphalt.
+    // W/↑ — полный газ (чуть быстрее), S/↓ — тормоз.
+    if (keys.ArrowDown || keys.KeyS) {
+      player.speed += CFG.braking * dt;
+    } else if (player.speed < 900) {
+      player.speed += CFG.accel * 1.8 * dt;                  // бодрый трогатель с места
+    } else {
+      player.speed += CFG.accel * ((keys.ArrowUp || keys.KeyW) ? 1.15 : 1.0) * dt;
+    }
 
-    // нитро
-    const wantBoost = input.nitro && player.nitro > 1 && player.speed > 1500;
+    // нитро (теперь работает и с нулевой скорости — помогает тронуться)
+    const wantBoost = input.nitro && player.nitro > 1;
     if (wantBoost) {
       player.nitro = Math.max(0, player.nitro - CFG.nitroDrain * dt);
       player.speed += CFG.accel * CFG.nitroBoostAccel * dt;
@@ -972,7 +991,8 @@
       let behind = (car.z - player.position + trackLength) % trackLength;
       if (behind > trackLength / 2) behind -= trackLength;      // > 0 — впереди, < 0 — позади
       if (behind < -45000 && !car.racer) {
-        const nb = spawnCar(rand(40000, 150000));
+        // возвращаем трафик в зону видимости, чтобы дорога не пустела
+        const nb = spawnCar(rand(22000, 85000));
         nb.targetX = nb.x;
         nb.passed = false;
         cars[i] = nb;
@@ -1293,8 +1313,8 @@
   function drawFlames(x, baseY, w, h, intensity, t) {
     if (intensity <= 0.01) return;
     for (let s = -1; s <= 1; s += 2) {
-      const fx = x + s * w * 0.17;
-      const fy = baseY - h * 0.13;
+      const fx = x + s * w * 0.42;              // внешние патрубки четвёрки
+      const fy = baseY - h * 0.12;
       const len = h * (0.35 + 0.5 * intensity) * (0.75 + 0.25 * Math.sin(t * 40 + s));
       const g = ctx.createRadialGradient(fx, fy, 1, fx, fy, len);
       g.addColorStop(0, 'rgba(255,255,255,0.95)');
@@ -1417,29 +1437,300 @@
     }
   }
 
+  // Метрики игровой машины: одни и те же для отрисовки и для дыма из-под колёс
+  function heroSize() {
+    const h = Math.max(82, H * 0.205);
+    return { h: h, w: h * 1.5 };
+  }
+  function heroX() {
+    return W / 2 + player.x * W * 0.10 + player.steerVis * W * 0.012;
+  }
+
+  /* ------------------------------------------------------------------------
+     Игровая машина — детализированный кузов в духе BMW M4 (вид сзади).
+     Всё процедурное: широкие «бёдра», L-образные фонари, четверной выхлоп,
+     диффузор с рёбрами, карбоновая крыша, духтейл-спойлер, диски с синими
+     суппортами, четверной шильдик и акцентные полосы. Стилизация, не копия.
+     ------------------------------------------------------------------------ */
+  // Схема кузова (вид сзади), все размеры — доли высоты h:
+  //   колесо         -0.30..0            выхлоп  -0.085        диффузор -0.205..-0.030
+  //   бампер         -0.455..-0.155      фонари  -0.605..-0.545 (ножка «L» до -0.500)
+  //   «бёдра»        -0.685..-0.440      крышка  -0.748..-0.628
+  //   стекло         -0.862..-0.748      крыша   -0.900..-0.856
+  function drawHeroCar(c, x, baseY, w, h, t, o) {
+    o = o || {};
+    const body = o.body || '#1268d6';
+    const dark = shade(body, -0.55), mid = shade(body, -0.20), lite = shade(body, 0.32);
+    const braking = !!o.brake;
+    const carbon = '#131418';
+
+    c.save();
+    c.translate(x, baseY);
+
+    /* ------------------------------- тень под машиной */
+    c.globalAlpha = 0.5;
+    c.fillStyle = '#000';
+    c.beginPath(); c.ellipse(0, h * 0.010, w * 0.60, h * 0.052, 0, 0, TAU); c.fill();
+    c.globalAlpha = 1;
+
+    /* ------------------------------- колёса: видна только нижняя часть из-под бампера */
+    const tireW = w * 0.150, tireH = h * 0.300;
+    for (let sd = -1; sd <= 1; sd += 2) {
+      const tx = sd * w * 0.432;
+      // тёмная арка
+      c.globalAlpha = 0.5; c.fillStyle = '#000';
+      rrect(c, tx - tireW * 0.58, -tireH * 0.92, tireW * 1.16, tireH * 0.92, h * 0.03); c.fill();
+      c.globalAlpha = 1;
+      // шина
+      const tg = c.createLinearGradient(tx - tireW / 2, 0, tx + tireW / 2, 0);
+      tg.addColorStop(0, '#06070a'); tg.addColorStop(0.5, '#16181e'); tg.addColorStop(1, '#06070a');
+      c.fillStyle = tg;
+      rrect(c, tx - tireW / 2, -tireH, tireW, tireH, h * 0.030); c.fill();
+      // протектор
+      c.fillStyle = 'rgba(76,82,96,0.5)';
+      for (let i = 0; i < 3; i++) {
+        c.fillRect(tx - tireW * 0.40, -tireH * 0.42 + i * h * 0.048, tireW * 0.80, h * 0.012);
+      }
+      // диск целиком помещается в видимой части колеса
+      const dy = -tireH * 0.42, dr = tireW * 0.44;
+      c.fillStyle = '#20242c';
+      c.beginPath(); c.arc(tx, dy, dr, 0, TAU); c.fill();
+      c.fillStyle = '#454d5c';
+      c.beginPath(); c.arc(tx, dy, dr * 0.80, 0, TAU); c.fill();
+      c.fillStyle = '#5b6574';
+      c.beginPath(); c.arc(tx, dy, dr * 0.30, 0, TAU); c.fill();
+      // спицы
+      c.strokeStyle = '#39404d';
+      c.lineWidth = Math.max(1, h * 0.012);
+      for (let k = 0; k < 5; k++) {
+        const a = k * (TAU / 5) + 0.25;
+        c.beginPath();
+        c.moveTo(tx + Math.cos(a) * dr * 0.26, dy + Math.sin(a) * dr * 0.26);
+        c.lineTo(tx + Math.cos(a) * dr * 0.72, dy + Math.sin(a) * dr * 0.72);
+        c.stroke();
+      }
+      // синий суппорт внутри диска
+      c.fillStyle = '#2f6fd8';
+      rrect(c, tx + sd * dr * 0.34 - dr * 0.30, dy - dr * 0.26, dr * 0.30, dr * 0.52, h * 0.006); c.fill();
+      // блик
+      c.fillStyle = 'rgba(255,255,255,0.05)';
+      rrect(c, tx - tireW * 0.42, -tireH * 0.55, tireW * 0.14, tireH * 0.45, h * 0.010); c.fill();
+    }
+
+    /* ------------------------------- диффузор с рёбрами */
+    c.fillStyle = '#0d0f13';
+    rrect(c, -w * 0.375, -h * 0.205, w * 0.75, h * 0.180, h * 0.020); c.fill();
+    c.fillStyle = '#1c1f27';
+    for (let i = -2; i <= 2; i++) {
+      c.fillRect(i * w * 0.112 - w * 0.009, -h * 0.190, w * 0.018, h * 0.160);
+    }
+
+    /* ------------------------------- четверной выхлоп */
+    for (let sd = -1; sd <= 1; sd += 2) {
+      for (let k = 0; k < 2; k++) {
+        const ex = sd * (w * 0.295 - k * w * 0.104);
+        const er = h * 0.029;
+        c.fillStyle = '#2b2f38';
+        c.beginPath(); c.ellipse(ex, -h * 0.082, er, er * 0.80, 0, 0, TAU); c.fill();
+        c.fillStyle = '#07090d';
+        c.beginPath(); c.ellipse(ex, -h * 0.082, er * 0.60, er * 0.50, 0, 0, TAU); c.fill();
+        c.strokeStyle = 'rgba(200,210,225,0.45)';
+        c.lineWidth = Math.max(1, h * 0.007);
+        c.beginPath(); c.ellipse(ex, -h * 0.082, er, er * 0.80, 0, 0, TAU); c.stroke();
+      }
+    }
+
+    /* ------------------------------- задний бампер */
+    const bg = c.createLinearGradient(0, -h * 0.455, 0, -h * 0.155);
+    bg.addColorStop(0, mid); bg.addColorStop(0.55, dark); bg.addColorStop(1, '#0e1116');
+    c.fillStyle = bg;
+    rrect(c, -w * 0.480, -h * 0.455, w * 0.96, h * 0.300, h * 0.035); c.fill();
+
+    // отражатели
+    c.fillStyle = '#b3231f';
+    for (let sd = -1; sd <= 1; sd += 2) {
+      rrect(c, sd * w * 0.315 - w * 0.055, -h * 0.258, w * 0.11, h * 0.028, h * 0.010); c.fill();
+    }
+    // парктроники
+    c.fillStyle = 'rgba(16,18,24,0.9)';
+    for (let i = -2; i <= 2; i++) {
+      c.beginPath(); c.arc(i * w * 0.082, -h * 0.345, h * 0.010, 0, TAU); c.fill();
+    }
+    // номер
+    c.fillStyle = '#cfd6e2';
+    rrect(c, -w * 0.100, -h * 0.330, w * 0.200, h * 0.082, h * 0.012); c.fill();
+    c.fillStyle = '#20242d';
+    c.fillRect(-w * 0.078, -h * 0.300, w * 0.156, h * 0.018);
+    c.fillStyle = 'rgba(0,0,0,0.18)';
+    rrect(c, -w * 0.100, -h * 0.268, w * 0.200, h * 0.020, h * 0.008); c.fill();
+
+    /* ------------------------------- «бёдра» — самая широкая часть кузова */
+    const hg = c.createLinearGradient(0, -h * 0.685, 0, -h * 0.440);
+    hg.addColorStop(0, lite); hg.addColorStop(0.30, body); hg.addColorStop(1, mid);
+    c.fillStyle = hg;
+    rrect(c, -w * 0.500, -h * 0.685, w * 1.00, h * 0.245, h * 0.048); c.fill();
+    // блик по верху крыла и тёмная линия стыка с бампером
+    c.fillStyle = 'rgba(255,255,255,0.13)';
+    rrect(c, -w * 0.478, -h * 0.676, w * 0.956, h * 0.011, h * 0.005); c.fill();
+    c.fillStyle = 'rgba(0,0,0,0.30)';
+    rrect(c, -w * 0.498, -h * 0.452, w * 0.996, h * 0.012, h * 0.005); c.fill();
+
+    /* ------------------------------- фонари (L-образные) */
+    for (let sd = -1; sd <= 1; sd += 2) {
+      const y = -h * 0.605, hh = h * 0.060;
+      const rowW = w * 0.245;
+      const rowX = sd < 0 ? -w * 0.460 : w * 0.215;
+      const legX = sd < 0 ? -w * 0.465 : w * 0.395;
+      const legW = w * 0.070, legH = h * 0.105;
+
+      c.save();
+      c.shadowColor = braking ? 'rgba(255,70,60,0.95)' : 'rgba(175,35,30,0.32)';
+      c.shadowBlur = h * (braking ? 0.26 : 0.09);
+      const lg = c.createLinearGradient(0, y, 0, y + hh);
+      lg.addColorStop(0, braking ? '#ff9484' : '#aa241f');
+      lg.addColorStop(0.45, braking ? '#ff2f24' : '#d3291f');
+      lg.addColorStop(1, braking ? '#c9150f' : '#7c1512');
+      c.fillStyle = '#101216';                                  // корпус
+      rrect(c, rowX - h * 0.010, y - h * 0.010, rowW + h * 0.020, hh + h * 0.020, h * 0.024); c.fill();
+      rrect(c, legX - h * 0.008, y - h * 0.008, legW + h * 0.016, legH + h * 0.016, h * 0.022); c.fill();
+      c.fillStyle = lg;                                          // стекло
+      rrect(c, rowX, y, rowW, hh, h * 0.017); c.fill();
+      rrect(c, legX, y, legW, legH, h * 0.017); c.fill();
+      c.restore();
+
+      // светодиодная полоса внутри
+      c.fillStyle = braking ? '#fff5f1' : '#ffa596';
+      rrect(c, rowX + rowW * 0.05, y + hh * 0.34, rowW * 0.90, hh * 0.30, h * 0.007); c.fill();
+      rrect(c, legX + legW * 0.34, y + legH * 0.34, legW * 0.34, legH * 0.52, h * 0.007); c.fill();
+      c.fillStyle = 'rgba(255,255,255,0.14)';
+      rrect(c, rowX + rowW * 0.06, y + hh * 0.12, rowW * 0.86, hh * 0.08, h * 0.004); c.fill();
+    }
+
+    /* ------------------------------- заднее стекло и стойки */
+    const wyTop = -h * 0.862, wyBot = -h * 0.748;
+    const wxBot = w * 0.330, wxTop = w * 0.272;
+    const wg = c.createLinearGradient(0, wyTop, 0, wyBot);
+    wg.addColorStop(0, '#1b2b45'); wg.addColorStop(0.55, '#132033'); wg.addColorStop(1, '#0b1520');
+    c.fillStyle = wg;
+    c.beginPath();
+    c.moveTo(-wxBot, wyBot); c.lineTo(wxBot, wyBot);
+    c.lineTo(wxTop, wyTop);  c.lineTo(-wxTop, wyTop);
+    c.closePath(); c.fill();
+    // нити обогрева
+    c.strokeStyle = 'rgba(190,215,255,0.10)';
+    c.lineWidth = Math.max(1, h * 0.006);
+    for (let i = 1; i <= 4; i++) {
+      const yy = wyTop + (wyBot - wyTop) * i / 5;
+      const k = (yy - wyTop) / (wyBot - wyTop);
+      const hx = w * (0.272 + (0.330 - 0.272) * k);
+      c.beginPath(); c.moveTo(-hx + w * 0.03, yy); c.lineTo(hx - w * 0.03, yy); c.stroke();
+    }
+    // мягкий блик
+    c.fillStyle = 'rgba(255,255,255,0.07)';
+    c.beginPath();
+    c.moveTo(-wxBot * 0.72, wyBot); c.lineTo(-wxBot * 0.30, wyBot);
+    c.lineTo(-wxTop * 0.10, wyTop); c.lineTo(-wxTop * 0.62, wyTop);
+    c.closePath(); c.fill();
+    // C-стойки
+    c.fillStyle = shade(body, -0.40);
+    for (let sd = -1; sd <= 1; sd += 2) {
+      c.beginPath();
+      c.moveTo(sd * wxBot, wyBot); c.lineTo(sd * (wxBot + w * 0.055), wyBot);
+      c.lineTo(sd * (wxTop + w * 0.030), wyTop); c.lineTo(sd * wxTop, wyTop);
+      c.closePath(); c.fill();
+    }
+
+    /* ------------------------------- крыша: карбон */
+    c.fillStyle = carbon;
+    rrect(c, -w * 0.290, -h * 0.900, w * 0.580, h * 0.044, h * 0.018); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.030)';
+    c.lineWidth = 1;
+    for (let i = -16; i <= 16; i++) {
+      const x0 = i * w * 0.018;
+      c.beginPath(); c.moveTo(x0, -h * 0.900); c.lineTo(x0 + w * 0.011, -h * 0.856); c.stroke();
+      c.beginPath(); c.moveTo(x0, -h * 0.900); c.lineTo(x0 - w * 0.011, -h * 0.856); c.stroke();
+    }
+    c.fillStyle = 'rgba(255,255,255,0.10)';
+    rrect(c, -w * 0.282, -h * 0.897, w * 0.564, h * 0.007, h * 0.003); c.fill();
+
+    /* ------------------------------- крышка багажника, спойлер, логотип, полосы */
+    const lg2 = c.createLinearGradient(0, -h * 0.748, 0, -h * 0.628);
+    lg2.addColorStop(0, lite); lg2.addColorStop(0.55, body); lg2.addColorStop(1, mid);
+    c.fillStyle = lg2;
+    c.beginPath();
+    c.moveTo(-w * 0.400, -h * 0.748); c.lineTo(w * 0.400, -h * 0.748);
+    c.lineTo(w * 0.462, -h * 0.628);  c.lineTo(-w * 0.462, -h * 0.628);
+    c.closePath(); c.fill();
+
+    // кромка-спойлер (духтейл) по верхнему краю крышки
+    c.fillStyle = shade(body, -0.34);
+    rrect(c, -w * 0.425, -h * 0.762, w * 0.850, h * 0.038, h * 0.013); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.20)';
+    rrect(c, -w * 0.415, -h * 0.758, w * 0.830, h * 0.008, h * 0.004); c.fill();
+    c.fillStyle = 'rgba(0,0,0,0.35)';
+    rrect(c, -w * 0.425, -h * 0.726, w * 0.850, h * 0.009, h * 0.004); c.fill();
+
+    // шильдик — над правым фонарём, на крышке
+    const br = h * 0.029, bx = w * 0.205, by = -h * 0.690;
+    c.fillStyle = '#0d0f13';
+    c.beginPath(); c.arc(bx, by, br * 1.10, 0, TAU); c.fill();
+    c.fillStyle = '#cdd6e4';
+    c.beginPath(); c.arc(bx, by, br * 0.92, 0, TAU); c.fill();
+    for (let q = 0; q < 4; q++) {
+      c.fillStyle = (q % 2 === 0) ? '#1c4fa0' : '#f4f8fd';
+      c.beginPath();
+      c.moveTo(bx, by);
+      c.arc(bx, by, br * 0.74, q * Math.PI / 2 - Math.PI / 2, (q + 1) * Math.PI / 2 - Math.PI / 2);
+      c.closePath(); c.fill();
+    }
+    c.strokeStyle = 'rgba(255,255,255,0.55)';
+    c.lineWidth = Math.max(1, h * 0.004);
+    c.beginPath(); c.arc(bx, by, br * 1.10, 0, TAU); c.stroke();
+
+    // три косые полосы слева на крышке
+    c.save();
+    c.translate(-w * 0.300, -h * 0.752);
+    c.rotate(-0.26);
+    const stripes = ['#2b8fe0', '#12307a', '#d92b1f'];
+    for (let i = 0; i < 3; i++) {
+      c.fillStyle = stripes[i];
+      c.fillRect(i * w * 0.030, 0, w * 0.020, h * 0.096);
+    }
+    c.restore();
+
+    /* ------------------------------- зеркала */
+    for (let sd = -1; sd <= 1; sd += 2) {
+      const mx = sd > 0 ? w * 0.500 - w * 0.078 : -w * 0.500;
+      c.fillStyle = shade(body, -0.10);
+      rrect(c, mx, -h * 0.782, w * 0.078, h * 0.042, h * 0.014); c.fill();
+      c.fillStyle = 'rgba(120,165,225,0.42)';
+      rrect(c, mx + w * 0.007, -h * 0.776, w * 0.064, h * 0.023, h * 0.008); c.fill();
+    }
+
+    /* ------------------------------- третий стоп-сигнал */
+    if (braking) {
+      c.fillStyle = 'rgba(255,60,50,0.92)';
+      rrect(c, -w * 0.095, -h * 0.752, w * 0.190, h * 0.012, h * 0.005); c.fill();
+    }
+
+    c.restore();
+  }
+
   function drawPlayerCar(t) {
-    const h = Math.max(70, H * 0.19);
-    const w = h * 1.55;
+    const m = heroSize();
     const bob = Math.sin(t * (8 + player.speed * 0.0006)) * (H * 0.004) * (0.4 + player.speed / CFG.maxSpeed);
-    const x = W / 2 + player.x * W * 0.10 + player.steerVis * W * 0.012;
-    const y = H * 0.93 + bob;
-    const col = { body: '#18c8e8', glass: '#12293a' };
+    const x = heroX();
+    const y = H * 0.905 + bob;
 
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(-player.steerVis * 0.035 - player.x * 0.02 + player.driftAngle * 0.55);
-    // тень
-    ctx.globalAlpha = 0.45;
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.ellipse(0, h * 0.02, w * 0.6, h * 0.09, 0, 0, TAU); ctx.fill();
-    ctx.globalAlpha = 1;
-
-    drawFlames(0, 0, w, h, player.boost, t);
-    drawCarRear(ctx, 0, 0, w, h, col, { spoiler: true, brake: false });
-    // неоновые акценты
-    ctx.strokeStyle = 'rgba(41,230,255,0.55)';
-    ctx.lineWidth = Math.max(1, h * 0.012);
-    ctx.strokeRect(-w * 0.47, -h * 0.60, w * 0.94, h * 0.05);
+    // воздушный поток от нитро — из внешних патрубков
+    ctx.save();
+    ctx.translate(0, 0);
+    drawFlames(0, 0, m.w * 0.72, m.h, player.boost, t);
+    ctx.restore();
+    drawHeroCar(ctx, 0, 0, m.w, m.h, t, { brake: keys.ArrowDown || keys.KeyS, body: '#1268d6' });
     ctx.restore();
   }
 
@@ -1603,6 +1894,11 @@
       el.airTag.style.opacity = String(clamp(0.4 + player.airTime * 0.5, 0, 1));
     } else {
       el.airTag.style.opacity = '0';
+    }
+
+    if (hintTimer > 0) {
+      hintTimer -= dt;
+      if (hintTimer < 1.5) el.hint.style.opacity = String(clamp(hintTimer / 1.5, 0, 1));
     }
 
     if (countdown > 0) {
