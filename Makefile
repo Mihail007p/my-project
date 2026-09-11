@@ -1,13 +1,20 @@
 # Всё нужное для работы с проектом: make serve / make test / make shots
 SHELL := /bin/bash
 
-.PHONY: help serve test test-fast shots syntax clean
+.PHONY: help serve test test-fast shots syntax clean remote
+
+REMOTE_URL ?= https://github.com/Mihail007p/my-project.git
 
 help:                ## Показать список команд
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 serve:               ## Запустить игру на http://localhost:8000
 	python3 -m http.server 8000
+
+remote:              ## Восстановить origin (локальный .git/config может теряться)
+	@git remote remove origin 2>/dev/null || true
+	@git remote add origin $(REMOTE_URL)
+	@git remote -v
 
 syntax:              ## Проверить синтаксис тестов
 	@for f in tests/*.js; do node --check $$f || exit 1; done; echo "syntax ok"

@@ -47,6 +47,22 @@ make shots      # скриншоты в headless Chrome (нужен puppeteer, �
 Для скриншотов: `npm i puppeteer` в любую папку и поправить путь в `tests/screenshot-test.js`
 (сейчас он смотрит в `/tmp/shot/node_modules/puppeteer`).
 
+### Пуш на GitHub
+
+Репозиторий: <https://github.com/Mihail007p/my-project> (приватный, ветка `main`).
+
+Важно: файл `.git/config` не сохраняется между сессиями, поэтому `origin` иногда теряется.
+Восстанавливается одной командой:
+
+```bash
+make remote        # вернёт origin = https://github.com/Mihail007p/my-project.git
+git push origin main
+```
+
+Для пуша нужна авторизация: либо `gh auth login` у себя на машине, либо device-flow
+(код с <https://github.com/login/device>) — скрипт лежит в `/home/user/bin/github-device-flow.py`,
+если он ещё жив в песочнице; иначе `gh auth login --web` решает ту же задачу.
+
 ## Что проверяют тесты
 
 | Файл | Проверок | Про что |
