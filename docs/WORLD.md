@@ -40,6 +40,9 @@ node tools/world-stats.js       # счётчики геометрии по эт�
 node tests/world-test.js        # puppeteer: 9 снимков в docs/screenshots/world/
 ```
 
+Снимки складываются в `docs/screenshots/world/`: аэросъёмка заката, езда днём и на закате,
+ночь, подъезд к тоннелю и тоннель изнутри, путепровод, город с высоты, облёт.
+
 **Важно для headless:** браузер надо запускать с `--use-angle=swiftshader`
 (`--use-gl=swiftshader` теряет WebGL-контекст, и кадр выходит пустым — уже проверено).
 
