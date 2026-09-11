@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Городское шоссе — мир в WebGL</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#05060a;color:#e8eefc;
+    font-family:"Segoe UI",Roboto,system-ui,-apple-system,Arial,sans-serif}
+  canvas{display:block;width:100%;height:100%;cursor:grab}
+  canvas:active{cursor:grabbing}
+
+  #hud{position:absolute;inset:0;pointer-events:none;user-select:none}
+  .panel{position:absolute;background:linear-gradient(180deg,rgba(8,10,18,.72),rgba(8,10,18,.42));
+    border:1px solid rgba(120,170,255,.22);border-radius:10px;padding:9px 12px;
+    backdrop-filter:blur(4px);box-shadow:0 6px 22px rgba(0,0,0,.4);font-size:12px;line-height:1.65}
+  #stats{left:12px;top:12px;min-width:190px}
+  #stats .row{display:flex;justify-content:space-between;gap:14px}
+  #stats .k{color:#8ea3c8}
+  #stats b{color:#fff;font-variant-numeric:tabular-nums}
+  #help{left:12px;bottom:12px;max-width:520px;color:#a9bcdd}
+  #help b{color:#fff}
+  kbd{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-bottom-width:2px;
+    border-radius:4px;padding:0 5px;font-family:inherit;font-size:11px}
+  #mode{right:12px;top:12px;text-align:right}
+  #mode b{font-size:15px;letter-spacing:1px}
+  #compass{position:absolute;left:50%;top:14px;transform:translateX(-50%);width:280px;height:26px;
+    border-radius:8px;background:rgba(8,10,18,.5);border:1px solid rgba(120,170,255,.18);overflow:hidden}
+  #compass i{position:absolute;top:0;bottom:0;width:1px;background:rgba(180,210,255,.45)}
+  #compass span{position:absolute;top:4px;font-size:11px;color:#cfe0ff;transform:translateX(-50%)}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:#05060a;transition:opacity .6s}
+  #loading.done{opacity:0;pointer-events:none}
+  #loading div{text-align:center}
+  #loading h1{margin:0 0 6px;font-size:26px;font-weight:800;letter-spacing:2px;
+    background:linear-gradient(90deg,#63d2ff,#fff 45%,#ff7ac2);-webkit-background-clip:text;
+    background-clip:text;color:transparent}
+  #loading p{margin:0;color:#7e93b8;font-size:12px;letter-spacing:3px}
+  #bar{margin-top:16px;width:320px;height:5px;border-radius:3px;background:rgba(255,255,255,.10);overflow:hidden}
+  #bar i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#3aa0ff,#7df0ff)}
+  #err{position:absolute;left:12px;right:12px;bottom:12px;padding:12px;border-radius:10px;
+    background:rgba(120,20,20,.85);font-size:12px;white-space:pre-wrap;display:none}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud">
+  <div id="compass"></div>
+
+  <div class="panel" id="stats">
+    <div class="row"><span class="k">FPS</span><b id="sFps">–</b></div>
+    <div class="row"><span class="k">Кадр</span><b id="sMs">–</b></div>
+    <div class="row"><span class="k">Треугольников</span><b id="sTris">–</b></div>
+    <div class="row"><span class="k">Вызовов отрисовки</span><b id="sCalls">–</b></div>
+    <div class="row"><span class="k">Скорость</span><b id="sSpeed">–</b></div>
+    <div class="row"><span class="k">Километр</span><b id="sKm">–</b></div>
+    <div class="row"><span class="k">Время суток</span><b id="sTime">–</b></div>
+  </div>
+
+  <div class="panel" id="mode">
+    <b id="mName">ПОЛЁТ</b><br>
+    <span class="k" id="mHint">свободная камера</span>
+  </div>
+
+  <div class="panel" id="help">
+    <b>Камера:</b> <kbd>1</kbd> езда · <kbd>2</kbd> полёт · <kbd>3</kbd> орбита<br>
+    <b>Движение:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · <kbd>Shift</kbd> ускорение ·
+    <kbd>Space</kbd> тормоз/вверх · <kbd>R</kbd>/<kbd>C</kbd> вверх-вниз · мышь — обзор<br>
+    <b>Сцена:</b> <kbd>[</kbd> <kbd>]</kbd> время суток · <kbd>F</kbd> туман · <kbd>L</kbd> свет ·
+    <kbd>H</kbd> панели · <kbd>P</kbd> статистика генерации
+  </div>
+
+  <div id="loading"><div>
+    <h1>ГОРОДСКОЕ ШОССЕ</h1>
+    <p>ГЕНЕРАЦИЯ МИРА</p>
+    <div id="bar"><i></i></div>
+  </div></div>
+
+  <div id="err"></div>
+</div>
+
+<script>
+"use strict";

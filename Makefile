@@ -1,37 +1,22 @@
-# Всё нужное для работы с проектом: make serve / make test / make shots
-SHELL := /bin/bash
+PY := python3
 
-.PHONY: help serve test test-fast shots syntax clean remote
+.PHONY: build test stats shots serve remote
 
-REMOTE_URL ?= https://github.com/Mihail007p/my-project.git
+build:            ## собрать index.html из src/
+	$(PY) tools/build.py
 
-help:                ## Показать список команд
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+stats:            ## счётчики геометрии мира без браузера
+	node tools/world-stats.js
 
-serve:               ## Запустить игру на http://localhost:8000
-	python3 -m http.server 8000
+test: build stats  ## сборка + проверки (+ снимки, если есть puppeteer)
+	@if [ -d /tmp/shot/node_modules/puppeteer ]; then node tests/world-test.js; \
+	 else echo "puppeteer не найден — снимки пропущены (см. docs/WORLD.md)"; fi
 
-remote:              ## Восстановить origin (локальный .git/config может теряться)
-	@git remote remove origin 2>/dev/null || true
-	@git remote add origin $(REMOTE_URL)
-	@git remote -v
+shots:            ## только снимки мира
+	node tests/world-test.js
 
-syntax:              ## Проверить синтаксис тестов
-	@for f in tests/*.js; do node --check $$f || exit 1; done; echo "syntax ok"
+serve:
+	$(PY) -m http.server 8000
 
-test: syntax         ## Прогнать все автотесты игры
-	@echo "=== симуляция без DOM ==="
-	@node tests/headless-test.js | tail -4
-	@echo "=== сценарии ==="
-	@node tests/scenario-test.js
-	@echo "=== гонка ==="
-	@node tests/race-test.js
-
-test-fast:           ## Только имитация гонки (без DOM)
-	@node tests/race-test.js
-
-shots:               ## Скриншоты в headless Chrome (нужен puppeteer)
-	@node tests/screenshot-test.js
-
-clean:               ## Убрать временные скриншоты
-	@rm -f /tmp/game.js
+remote:
+	git remote -v || git remote add origin https://github.com/Mihail007p/my-project.git

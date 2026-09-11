@@ -16,18 +16,22 @@ jobs:
         with:
           node-version: 20
 
-      - name: Синтаксис игры и тестов
+      - name: Сборка одного файла
+        run: python3 tools/build.py
+
+      - name: Синтаксис собранной игры
         run: |
-          node --check tests/scenario-test.js
-          node --check tests/headless-test.js
-          node --check tests/race-test.js
-          node --check tests/screenshot-test.js
+          python3 - <<'PY'
+          import re, pathlib
+          html = pathlib.Path('index.html').read_text(encoding='utf-8')
+          js = re.search(r'<script>\n(.*)\n</script>', html, re.S).group(1)
+          pathlib.Path('/tmp/game.js').write_text(js, encoding='utf-8')
+          print('JS извлечён:', len(js.splitlines()), 'строк')
+          PY
+          node --check /tmp/game.js
 
-      - name: Симуляция без DOM (60 секунд игры)
-        run: node tests/headless-test.js
+      - name: Геометрия мира (без браузера)
+        run: node tools/world-stats.js
 
-      - name: Сценарии (удары, обгоны, барьер, трафик, нитро)
-        run: node tests/scenario-test.js
-
-      - name: Гонка (соперники, круги, трамплин, дрифт, финиш)
-        run: node tests/race-test.js
+      - name: Синтаксис тестов
+        run: node --check tests/world-test.js
