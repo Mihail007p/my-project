@@ -30,6 +30,15 @@
   .btn:active{transform:scale(.97)}
   .btn.primary{background:linear-gradient(180deg,#ff8a2a,#e35d00);border-color:#ff9b4d;
     font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.35);box-shadow:0 4px 18px rgba(255,106,0,.35)}
+  /* кнопка старта заблокирована, пока грузится 3D-модель машины */
+  .btn.primary:disabled{cursor:progress;transform:none;filter:none;color:var(--dim);
+    background:linear-gradient(180deg,#2b323a,#1b2026);border-color:var(--line);
+    text-shadow:none;box-shadow:none}
+  #modelBar{margin-top:10px;height:5px;border-radius:3px;background:#1a1f25;overflow:hidden;
+    border:1px solid var(--line)}
+  #modelBarFill{height:100%;width:0%;border-radius:3px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s}
+  #modelBar.hide{display:none}
   .chip{display:inline-block;cursor:pointer;padding:8px 14px;border-radius:8px;font-size:13px;
     font-weight:600;letter-spacing:.5px;color:var(--dim);background:#1a1f25;border:1px solid var(--line)}
   .chip.on{color:#fff;background:linear-gradient(180deg,#ff8a2a,#e35d00);border-color:#ff9b4d}
@@ -172,9 +181,10 @@
     </div>
     <div class="optLabel">Цвет твоей машины</div>
     <div id="swatches"></div>
-    <button class="btn primary" id="btnStart">ПОЕХАЛИ &nbsp;▶</button>
-    <div id="modelStatus" style="margin-top:12px;font-size:12px;letter-spacing:1px;color:#7fe08f">⏳ Загрузка 3D-модели Ferrari…</div>
-  <div id="controlsHint">
+    <button class="btn primary" id="btnStart" disabled>⏳ ЗАГРУЗКА МАШИНЫ…</button>
+    <div id="modelBar"><div id="modelBarFill"></div></div>
+    <div id="modelStatus" style="margin-top:10px;font-size:12px;letter-spacing:1px;color:#98a2ad">⏳ Загружаем 3D-модель Ferrari 458 (1.7 МБ)…</div>
+    <div id="controlsHint">
       <b>W A S D</b> / <b>← ↑ ↓ →</b> — руль и газ · <b>Пробел</b> — дрифт (ручник)<br>
       <b>C</b> — камера · <b>R</b> — на трассу · <b>M</b> — звук · <b>Esc</b> — пауза<br>
       На телефоне — сенсорные кнопки на экране
@@ -211,6 +221,7 @@
 
 <script src="lib/three.min.js"></script>
 <script src="assets/GLTFLoader.js"></script>
+<script src="assets/DRACOLoader.js"></script>
 <script>
   /* резерв: если локальный движок не загрузился — тянем с CDN напрямую в браузер */
   if(typeof THREE==='undefined'){
@@ -274,66 +285,161 @@ const DIFFS={
   hard:  {skill:[0.97,1.06], aLat:11.2, vmax:76}
 };
 
-/* ---------------- ПРЕЛОАДЕР РЕАЛЬНОЙ 3D-МОДЕЛИ (Ferrari 458, three.js examples) ---------------- */
-const assets={carTemplate:null,ready:false};
+/* ---------------- ЗАГРУЗКА РЕАЛЬНОЙ 3D-МОДЕЛИ (Ferrari 458, Draco 1.7 МБ) ----------------
+   Модель должна приехать ДО старта: пока она грузится, кнопка «ПОЕХАЛИ» заблокирована
+   и показывает прогресс. Иначе гонка начиналась на запасной (процедурной) машине —
+   ровно тот баг «старая машина вернулась».
+   ferrari.glb сжат Draco (1.7 МБ) вместо ferrari-plain.glb (8.2 МБ) — грузится в ~5 раз быстрее. */
+const MODEL_URL='assets/ferrari.glb';
+const MODEL_DECODER_PATH='assets/draco/';
+const MODEL_WAIT_LIMIT=20;        // секунд: дольше держать игрока в меню нельзя
+const assets={carTemplate:null,ready:false,failed:false,unlocked:false,
+              progress:0,meshes:0,triangles:0,error:null};
 (function preloadCar(){
-  function init(GL){
-    const loader=new GL();
-    loader.load('assets/ferrari-plain.glb',gltf=>{
+  function status(text,color){
+    const ms=$('modelStatus');
+    if(ms){ms.textContent=text;if(color)ms.style.color=color;}
+  }
+  function bar(p){
+    const b=$('modelBar'),f=$('modelBarFill');
+    if(b&&b.classList)b.classList.toggle('hide',p==null);
+    if(f&&f.style)f.style.width=(p==null?0:Math.round(clamp(p,0,1)*100))+'%';
+  }
+  function setStart(unlocked,text){
+    const b=$('btnStart');
+    assets.unlocked=unlocked;
+    if(!b)return;
+    b.disabled=!unlocked;
+    b.innerHTML=unlocked?'ПОЕХАЛИ &nbsp;▶':('⏳ '+(text||'ЗАГРУЗКА МАШИНЫ…'));
+  }
+  function modelApplied(){
+    assets.failed=false;assets.error=null;   // модель могла приехать и после страховочного таймаута
+    status('✓ Ferrari 458 загружена: '+assets.meshes+' мешей, '+
+           Math.round(assets.triangles/1000)+' тыс. треугольников','#7fe08f');
+    bar(1);
+    setTimeout(()=>bar(null),700);
+    setStart(true);
+    if(!window.__game)return;             // игра ещё не собрана — просто ждём
+    if(game.state==='menu')setupRace();   // в меню сразу показываем настоящую машину
+    else toast('3D-модель загружена — поедет в следующем заезде');
+  }
+  function modelFailed(reason){
+    if(assets.failed)return;
+    assets.failed=true;assets.error=reason;
+    status('⚠ '+reason+'. Включён запасной автомобиль — ехать можно','#ffb347');
+    bar(null);
+    setStart(true);
+  }
+  /* нормализуем: нос в +Z, левый борт в +X, длина 4.55 м, колёса на y=0 */
+  function normalize(src){
+    const box=new THREE.Box3().setFromObject(src);
+    const size=box.getSize(new THREE.Vector3());
+    if(size.x>size.z)src.rotation.y=Math.PI/2;      // модель вдоль X — разворачиваем
+    src.updateMatrixWorld(true);
+    const wf=src.getObjectByName('wheel_fl'),wr=src.getObjectByName('wheel_rl');
+    if(wf&&wr){
+      const p1=new THREE.Vector3().setFromMatrixPosition(wf.matrixWorld);
+      const p2=new THREE.Vector3().setFromMatrixPosition(wr.matrixWorld);
+      if(p1.z<p2.z)src.rotation.y+=Math.PI;         // нос должен смотреть в +Z
+    }
+    src.updateMatrixWorld(true);
+    const s2=new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3());
+    src.scale.setScalar(4.55/Math.max(s2.x,s2.z));
+    src.updateMatrixWorld(true);
+    src.position.y-=new THREE.Box3().setFromObject(src).min.y;   // колёса на y=0
+    src.updateMatrixWorld(true);
+    let meshes=0,triangles=0;
+    src.traverse(o=>{
+      if(!o.isMesh)return;
+      o.castShadow=true;
+      meshes++;
+      const g=o.geometry;
+      triangles+=(g.index?g.index.count:(g.attributes.position?g.attributes.position.count:0))/3;
+    });
+    assets.meshes=meshes;
+    assets.triangles=Math.round(triangles);
+  }
+  function load(){
+    const loader=new THREE.GLTFLoader();
+    if(THREE.DRACOLoader){
+      const draco=new THREE.DRACOLoader();
+      draco.setDecoderPath(MODEL_DECODER_PATH);
+      draco.setDecoderConfig({type:'js'});          // JS-декодер: без WASM, работает везде
+      draco.preload();
+      /* если сам декодер не скачался, three.js молча повиснет (reject без обработчика) —
+         ловим это здесь и сразу уходим на запасную машину, не дожидаясь таймаута */
+      if(draco.decoderPending&&draco.decoderPending.catch)
+        draco.decoderPending.catch(e=>{
+          console.warn('Draco-декодер не загрузился:',e&&(e.message||e));
+          modelFailed('Декодер 3D-модели не загрузился');
+        });
+      loader.setDRACOLoader(draco);
+    }
+    loader.load(MODEL_URL,gltf=>{
       try{
         const src=gltf.scene.children[0]||gltf.scene;
-        // нормализуем: длина по Z, ровно 4.5 м, на земле
-        const box=new THREE.Box3().setFromObject(src);
-        const size=box.getSize(new THREE.Vector3());
-        if(size.x>size.z)src.rotation.y=Math.PI/2;   // модель вдоль X — разворачиваем
-        src.updateMatrixWorld(true);
-        const wf=src.getObjectByName('wheel_fl'),wr=src.getObjectByName('wheel_rl');
-        if(wf&&wr){
-          const p1=new THREE.Vector3().setFromMatrixPosition(wf.matrixWorld);
-          const p2=new THREE.Vector3().setFromMatrixPosition(wr.matrixWorld);
-          if(p1.z<p2.z)src.rotation.y+=Math.PI;      // нос должен смотреть в +Z
-        }
-        src.updateMatrixWorld(true);
-        const box2=new THREE.Box3().setFromObject(src);
-        const s2=box2.getSize(new THREE.Vector3());
-        const k=4.55/Math.max(s2.x,s2.z);
-        src.scale.setScalar(k);
-        src.updateMatrixWorld(true);
-        const box3=new THREE.Box3().setFromObject(src);
-        src.position.y-=box3.min.y;                  // колёса на y=0
-        src.traverse(o=>{if(o.isMesh)o.castShadow=true;});
-        assets.carTemplate=src;assets.ready=true;
-        const ms=document.getElementById('modelStatus');
-        if(ms){ms.textContent='✓ Настоящая 3D-модель Ferrari 458 загружена';ms.style.color='#7fe08f';}
-        console.log('Ferrari 458 загружена ✓');
-      }catch(e){console.warn('не удалось подготовить модель:',e);}
+        normalize(src);
+        assets.carTemplate=src;
+        assets.ready=true;
+        assets.progress=1;
+        modelApplied();
+        console.log('Ferrari 458 загружена ✓ '+assets.meshes+' мешей, '+assets.triangles+' треугольников');
+      }catch(e){
+        console.warn('не удалось подготовить модель:',e);
+        modelFailed('Ошибка разбора модели');
+      }
     },xhr=>{
-      if(xhr.total&&xhr.lengthComputable){
-        const ms=document.getElementById('modelStatus');
-        if(ms&&!assets.ready)ms.textContent='⏳ Загрузка Ferrari: '+Math.round(xhr.loaded/xhr.total*100)+'%';
+      if(assets.ready||assets.failed)return;
+      if(xhr&&xhr.lengthComputable&&xhr.total){
+        assets.progress=clamp(xhr.loaded/xhr.total,0,1);
+        const p=Math.round(assets.progress*100);
+        bar(assets.progress);
+        setStart(false,'ЗАГРУЗКА МАШИНЫ… '+p+'%');
+        status('⏳ Загрузка Ferrari 458 (1.7 МБ): '+p+'%','#98a2ad');
+      }else{
+        setStart(false,'ЗАГРУЗКА МАШИНЫ…');
       }
     },err=>{
-      const ms=document.getElementById('modelStatus');
-      if(ms){ms.textContent='⚠ Модель не загрузилась — включён запасной автомобиль';ms.style.color='#ffb347';}
-      console.warn('модель не загрузилась:',err&&err.message||err);
+      console.warn('модель не загрузилась:',(err&&(err.message||err.statusText))||err);
+      modelFailed('Модель не загрузилась');
     });
   }
-  if(window.THREE&&THREE.GLTFLoader)init(THREE.GLTFLoader);
-  else window.addEventListener('load',()=>{ if(window.THREE&&THREE.GLTFLoader)init(THREE.GLTFLoader); });
+  setStart(false,'ЗАГРУЗКА МАШИНЫ…');   // до приезда модели старт закрыт
+  bar(0);
+  if(window.THREE&&THREE.GLTFLoader)load();
+  else window.addEventListener('load',()=>{
+    if(window.THREE&&THREE.GLTFLoader)load();
+    else modelFailed('3D-движок не загрузился');
+  });
+  /* страховка: зависшая загрузка не запирает игрока в меню навсегда */
+  const guard=setTimeout(()=>{
+    if(!assets.ready&&!assets.failed)modelFailed('Загрузка модели затянулась');
+  },MODEL_WAIT_LIMIT*1000);
+  if(guard&&guard.unref)guard.unref();    // не держим процесс Node в автотестах
 })();
 function buildGltfCar(colorHex,isPlayer){
   const outer=new THREE.Group();
   const root=assets.carTemplate.clone(true);
+  /* Кузов, стёкла и стоп-сигналы получают СВОИ материалы на каждую машину.
+     Шаблон (assets.carTemplate) общий: clone() не копирует материалы, поэтому
+     правка o.material.* перекрашивала бы все машины сразу. */
+  const bodyMat=new THREE.MeshPhysicalMaterial({color:colorHex,metalness:1.0,roughness:0.42,
+    clearcoat:1.0,clearcoatRoughness:0.06});
+  const glassMat=new THREE.MeshPhysicalMaterial({color:0x0a0e13,metalness:.9,roughness:.08,
+    clearcoat:1,transparent:true,opacity:.94});
+  const tailMat=new THREE.MeshStandardMaterial({color:0x35070a,emissive:new THREE.Color(0xff1e1e),
+    emissiveIntensity:.45,metalness:.2,roughness:.25,transparent:true,opacity:.95});
   const body=root.getObjectByName('body');
-  const bodyMat=new THREE.MeshPhysicalMaterial({color:colorHex,metalness:1.0,roughness:0.42,clearcoat:1.0,clearcoatRoughness:0.06});
   if(body)body.material=bodyMat;
-  const glass=root.getObjectByName('glass');
-  if(glass)glass.material=new THREE.MeshPhysicalMaterial({color:0x0a0e13,metalness:.9,roughness:.08,clearcoat:1});
+  const casters=[];
   root.traverse(o=>{
-    if(o.isMesh){
-      o.castShadow=true;
-      if(o.material&&o.material.isMeshPhysicalMaterial&&o!==body){o.material.metalness=1;o.material.roughness=0.4;}
-    }
+    if(!o.isMesh)return;
+    casters.push(o);
+    o.castShadow=true;
+    if(o===body)return;
+    const mn=(o.material&&o.material.name)||'';
+    if(o.name==='glass'||mn==='Glass_Gray')o.material=glassMat;
+    else if(o.name==='lights_red'||mn==='Taillight_Glass')o.material=tailMat;  // стоп-сигналы горят при торможении
   });
   outer.add(root);
   // колёса: передние — в держатель для руления
@@ -355,7 +461,7 @@ function buildGltfCar(colorHex,isPlayer){
       wheels.push({wg:w,spin:w,front:false});
     }
   }
-  return {grp:outer,wheels,bodyMat,tailLights:null};
+  return {grp:outer,wheels,bodyMat,tailLights:tailMat,casters,gltf:true};
 }
 
 /* ---------------- СОСТОЯНИЕ ---------------- */
@@ -962,9 +1068,11 @@ class Car{
     this.name=name; this.isAI=isAI;
     const m=assets.ready?buildGltfCar(colorHex,isAI?false:true):buildCarMesh(colorHex,isAI?false:true);
     this.mesh=m.grp; this.wheels=m.wheels; this.bodyMat=m.bodyMat;
-    // собираем материал стоп-сигналов из группы
-    this.tailLights=null;
-    this.mesh.traverse(o=>{if(o.material&&o.material.emissive&&o.material.emissive.getHex()===0xff1e1e)this.tailLights=o.material;});
+    this.isGltf=!!m.gltf; this.casters=m.casters||null; this.shadowOn=true;
+    // материал стоп-сигналов: у 3D-модели он свой, у запасной машины ищем по emissive
+    this.tailLights=m.tailLights||null;
+    if(!this.tailLights)
+      this.mesh.traverse(o=>{if(o.material&&o.material.emissive&&o.material.emissive.getHex()===0xff1e1e)this.tailLights=o.material;});
     scene.add(this.mesh);
     this.pos=new THREE.Vector3(); this.heading=0;
     this.vf=0; this.vl=0; this.steer=0; this.steerInput=0;
@@ -1150,8 +1258,20 @@ const AI_META=[
   {name:'БАРС',   color:0x2fae5c},{name:'ПРИЗРАК',color:0x8e5ce0},
   {name:'ТИТАН',  color:0xe07820}
 ];
+/* освобождаем GPU-ресурсы старой машины. У запасной (процедурной) геометрия и
+   материалы свои — их можно dispose()нуть. У 3D-модели они общие с шаблоном
+   (clone() их не копирует) — трогать нельзя, иначе пропадут все остальные машины. */
+function disposeCarMesh(c){
+  if(!c||!c.mesh||c.isGltf)return;
+  c.mesh.traverse(o=>{
+    if(!o.isMesh)return;
+    if(o.geometry)o.geometry.dispose();
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    for(const m of mats)if(m&&m.dispose)m.dispose();
+  });
+}
 function setupRace(){
-  for(const c of cars)scene.remove(c.mesh);
+  for(const c of cars){scene.remove(c.mesh);disposeCarMesh(c);}
   cars.length=0;
   const d=DIFFS[CFG.diff];
   player=new Car('ТЫ',new THREE.Color(CFG.playerColor).getHex(),false,5);
@@ -1229,7 +1349,7 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyC'){cycleCam();return;}
   if(e.code==='KeyR'&&player&&(game.state==='racing')){resetCar(player);return;}
   if(e.code==='KeyM'){toggleMute();return;}
-  if(e.code==='Enter'&&game.state==='menu'){initAudio();startRace();return;}
+  if(e.code==='Enter'&&game.state==='menu'){tryStart();return;}
   const k=KEYMAP[e.code]; if(k){input[k]=true;e.preventDefault();}
 });
 window.addEventListener('keyup',e=>{const k=KEYMAP[e.code];if(k)input[k]=false;});
@@ -1572,6 +1692,26 @@ function goMenu(){
   $('pauseModal').style.display='none';
   $('resultsModal').style.display='none';
 }
+/* ---------------- ТЕНИ МАШИН ----------------
+   3D-модель Ferrari — ~359 тыс. треугольников, шесть машин дают ~2.1 млн.
+   В теневую карту (2048×2048) пускаем только те ИИ-машины, что рядом с якорем
+   света: картинка та же, а кадров в секунду заметно больше (особенно на телефоне). */
+const SHADOW_AI_DIST=90;          // м от якоря теней
+let shadowT=0;
+function updateCarShadows(dt){
+  if(!assets.ready||!player)return;
+  shadowT-=dt;
+  if(shadowT>0)return;
+  shadowT=0.25;
+  const anchor=(game.state!=='menu'&&player.pos)?player.pos:camLook;
+  for(const c of cars){
+    if(!c.isAI||!c.casters)continue;
+    const want=c.pos.distanceToSquared(anchor)<SHADOW_AI_DIST*SHADOW_AI_DIST;
+    if(want===c.shadowOn)continue;
+    c.shadowOn=want;
+    for(const m of c.casters)m.castShadow=want;
+  }
+}
 function frame(t){
   requestAnimationFrame(frame);
   let dt=(t-clock.last)/1000;
@@ -1580,6 +1720,7 @@ function frame(t){
   if(!game.paused){
     update(dt);
     updateCamera(dt);
+    updateCarShadows(dt);
     updateAudio(dt);
   }
   updateHUD(game.paused?0.016:dt);
@@ -1614,7 +1755,21 @@ bindChips('diffRow',chip=>{CFG.diff=chip.dataset.diff;});
     box.appendChild(d);
   });
 }
-$('btnStart').addEventListener('click',()=>{initAudio();beep(660,.1,0,.3);startRace();});
+/* старт разрешён только когда машина готова (модель загружена ИЛИ включён запасной вариант) */
+function tryStart(){
+  if(!assets.unlocked){
+    const ms=$('modelStatus');
+    const p=Math.round((assets.progress||0)*100);
+    if(ms){
+      ms.textContent='⏳ Машина ещё грузится'+(p>0&&p<100?': '+p+'%':'')+' — кнопка откроется сама';
+      ms.style.color='#ffb347';
+    }
+    return false;
+  }
+  initAudio();beep(660,.1,0,.3);startRace();
+  return true;
+}
+$('btnStart').addEventListener('click',tryStart);
 $('btnResume').addEventListener('click',togglePause);
 $('btnRestart').addEventListener('click',()=>{startRace();});
 $('btnToMenu').addEventListener('click',goMenu);
@@ -1642,9 +1797,18 @@ requestAnimationFrame(frame);
 
 /* хуки для автотестов */
 window.__game={
-  start:startRace,update,cars,track,game,input,
+  start:startRace,update,cars,track,game,input,assets,tryStart,
+  carInfo(){
+    const p=player;
+    if(!p)return null;
+    let meshes=0,tris=0;
+    p.mesh.traverse(o=>{if(o.isMesh){meshes++;const g=o.geometry;
+      tris+=(g.index?g.index.count:(g.attributes.position?g.attributes.position.count:0))/3;}});
+    return {gltf:p.isGltf,meshes,tris:Math.round(tris),wheels:p.wheels.length,
+      tailLights:!!p.tailLights,bodyColor:'#'+p.bodyMat.color.getHexString()};
+  },
   get player(){return player;},
-  tick(dt){update(dt);updateCamera(dt);}
+  tick(dt){update(dt);updateCamera(dt);updateCarShadows(dt);}
 };
 </script>
 </body>
