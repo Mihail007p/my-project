@@ -4784,15 +4784,19 @@ const input={left:false,right:false,up:false,down:false,hand:false,steerSm:0};
 /* ---------------- РЕНДЕРЕР / СЦЕНА ---------------- */
 let renderer,scene,camera,sunLight,hemiLight;
 const clock={last:0};
+/* Слабые телефоны (Mali-G52 и ниже): 6 машин по 359 тыс. треугольников + тени
+   + DPR 1.5 съедают все кадры в секунду. На touch-экранах: без MSAA, DPR 1.0,
+   карта теней 1024, соперники на лёгких процедурных мешах (герой игрока —
+   настоящая Ferrari). Дальше качество доводит губернер по FPS (perfTick). */
+const TOUCH=(navigator.maxTouchPoints>0||matchMedia('(pointer: coarse)').matches);
+const PERF={lightAI:TOUCH,lvl:0,dprScale:1,acc:0,n:0,bad:0,good:0};
+const DPR_CAP=TOUCH?1.0:2;
 try{
-  renderer=new THREE.WebGLRenderer({canvas:$('gl'),antialias:true,powerPreference:'high-performance'});
-  /* на телефонах DPR 3-4 превращает кадр в 8 млн пикселей — ограничиваем,
-   иначе 359 тыс. треугольников модели съедят все кадры в секунду */
-const DPR_CAP=(navigator.maxTouchPoints>0||matchMedia('(pointer: coarse)').matches)?1.5:2;
+  renderer=new THREE.WebGLRenderer({canvas:$('gl'),antialias:!TOUCH,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,DPR_CAP));
   renderer.setSize(window.innerWidth,window.innerHeight);
   renderer.shadowMap.enabled=true;
-  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type=TOUCH?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
   renderer.outputEncoding=THREE.sRGBEncoding;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.05;
@@ -4817,7 +4821,7 @@ hemiLight=new THREE.HemisphereLight(0xcfe4ff,0x51624a,0.85);
 scene.add(hemiLight);
 sunLight=new THREE.DirectionalLight(0xfff1d6,1.35);
 sunLight.castShadow=true;
-sunLight.shadow.mapSize.set(2048,2048);
+sunLight.shadow.mapSize.set(TOUCH?1024:2048,TOUCH?1024:2048);
 sunLight.shadow.camera.left=-95; sunLight.shadow.camera.right=95;
 sunLight.shadow.camera.top=95;  sunLight.shadow.camera.bottom=-95;
 sunLight.shadow.camera.near=20; sunLight.shadow.camera.far=420;
@@ -5334,7 +5338,8 @@ function buildCarMesh(colorHex,isPlayer){
 class Car{
   constructor(name,colorHex,isAI,gridSlot){
     this.name=name; this.isAI=isAI;
-    const m=assets.ready?buildGltfCar(colorHex,isAI?false:true):buildCarMesh(colorHex,isAI?false:true);
+    const gltf=assets.ready&&!(isAI&&PERF.lightAI);
+    const m=gltf?buildGltfCar(colorHex,isAI?false:true):buildCarMesh(colorHex,isAI?false:true);
     this.mesh=m.grp; this.wheels=m.wheels; this.bodyMat=m.bodyMat;
     this.isGltf=!!m.gltf; this.casters=m.casters||null; this.shadowOn=true;
     // материал стоп-сигналов: у 3D-модели он свой, у запасной машины ищем по emissive
@@ -5966,6 +5971,40 @@ function goMenu(){
    света: картинка та же, а кадров в секунду заметно больше (особенно на телефоне). */
 const SHADOW_AI_DIST=90;          // м от якоря теней
 let shadowT=0;
+/* ---------------- ГУБЕРНЕР КАЧЕСТВА ПО FPS ----------------
+   Держим кадр ≥40 FPS: ниже — ступень вниз (меньше пикселей, затем тени),
+   стабильно выше 55 — ступень вверх. Меряем только в заезде: меню лёгкое. */
+function setDPR(){
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,DPR_CAP)*PERF.dprScale);
+  renderer.setSize(window.innerWidth,window.innerHeight);
+}
+function applyPerf(){
+  PERF.dprScale=[1,.75,.6][PERF.lvl];
+  setDPR();
+  const sh=PERF.lvl<2;
+  if(renderer.shadowMap.enabled!==sh){
+    renderer.shadowMap.enabled=sh;
+    scene.traverse(o=>{
+      const m=o.material;if(!m)return;
+      for(const x of(Array.isArray(m)?m:[m]))x.needsUpdate=true;
+    });
+  }
+}
+function perfTick(dt){
+  if(game.state!=='racing'||document.hidden)return;
+  PERF.acc+=dt;PERF.n++;
+  if(PERF.acc<1)return;
+  const fps=PERF.n/PERF.acc;PERF.acc=0;PERF.n=0;
+  if(fps<40){
+    PERF.good=0;
+    if(++PERF.bad>=2&&PERF.lvl<2){PERF.lvl++;PERF.bad=0;applyPerf();
+      console.log('perf: '+fps.toFixed(0)+' FPS — ступень качества '+PERF.lvl);}
+  }else if(fps>55){
+    PERF.bad=0;
+    if(++PERF.good>=5&&PERF.lvl>0){PERF.lvl--;PERF.good=0;applyPerf();
+      console.log('perf: '+fps.toFixed(0)+' FPS — качество вверх, ступень '+PERF.lvl);}
+  }else{PERF.bad=0;PERF.good=0;}
+}
 function updateCarShadows(dt){
   if(!assets.ready||!player)return;
   shadowT-=dt;
@@ -6076,7 +6115,11 @@ window.__game={
       tailLights:!!p.tailLights,bodyColor:'#'+p.bodyMat.color.getHexString()};
   },
   get player(){return player;},
-  tick(dt){update(dt);updateCamera(dt);updateCarShadows(dt);}
+  perfInfo(){return {touch:TOUCH,lvl:PERF.lvl,dpr:renderer.getPixelRatio(),
+    shadows:renderer.shadowMap.enabled,lightAI:PERF.lightAI,
+    cars:cars.map(c=>({ai:c.isAI,gltf:c.isGltf}))};},
+  _perfTick:perfTick,
+  tick(dt){update(dt);updateCamera(dt);updateCarShadows(dt);perfTick(dt);}
 };
 </script>
 </body>

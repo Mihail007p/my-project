@@ -195,7 +195,7 @@ async function boot(file,opts){
   sandbox.window=sandbox;
   sandbox.globalThis=sandbox;
   sandbox.self=sandbox;
-  sandbox.navigator={userAgent:'node-car-test',maxTouchPoints:0};
+  sandbox.navigator={userAgent:'node-car-test',maxTouchPoints:opts.touch?5:0};
   sandbox.addEventListener=()=>{};
   sandbox.removeEventListener=()=>{};
   const els={};
@@ -229,8 +229,8 @@ async function boot(file,opts){
       class FakeRenderer{
         constructor(){this.domElement=getEl('gl');this.shadowMap={enabled:false,type:0};
           this.info={render:{calls:0,triangles:0}};}
-        setPixelRatio(){}setSize(){}render(){}dispose(){}
-        setClearColor(){}getPixelRatio(){return 1;}
+        setPixelRatio(r){this._pr=r;}setSize(){}render(){}dispose(){}
+        setClearColor(){}getPixelRatio(){return this._pr||1;}
       }
       sandbox.THREE.WebGLRenderer=FakeRenderer;
       patchFileLoader(sandbox.THREE,opts.loaderMode||'disk',base);
@@ -332,6 +332,7 @@ async function raceCheck(G,label){
   ok(!!G,'игра инициализирована (window.__game)');
   ok(G.game.state==='menu','стартовое меню');
   ok(G.cars.length===6,'6 машин на старте');
+  ok(G.perfInfo().lightAI===false,'без touch (десктоп) соперники остаются с настоящей моделью');
 
   const btn=env.el('btnStart'),st=env.el('modelStatus'),fill=env.el('modelBarFill');
   ok(btn.disabled===true,'кнопка «ПОЕХАЛИ» заблокирована, пока модель грузится');
@@ -412,6 +413,35 @@ async function raceCheck(G,label){
   ok(BG.tryStart()===true,'гонка начинается и без 3D-модели');
   for(let i=0;i<60*6;i++)BG.tick(1/60);
   ok(BG.game.state==='racing'||BG.game.state==='finished','заезд идёт: '+BG.game.state);
+
+  /* ================================================================
+     СЦЕНАРИЙ 5 — слабый телефон: лёгкие соперники и губернер FPS
+     ================================================================ */
+  section('5. телефон (touch): лёгкие соперники, DPR и губернер FPS');
+  const ph=await boot(path.join(NP,'index.html'),{touch:true});
+  const PG=ph.G;
+  for(let i=0;i<200&&!PG.assets.ready;i++)await ph.tick(50);
+  ok(PG.assets.ready===true,'модель загрузилась и на телефоне');
+  const pi0=PG.perfInfo();
+  ok(pi0.touch===true,'телефон распознан как touch-устройство');
+  ok(pi0.lightAI===true,'на телефоне соперники переводятся на лёгкие меши');
+  ok(pi0.cars.filter(c=>c.ai).every(c=>!c.gltf),'все 5 соперников — лёгкие процедурные меши');
+  ok(pi0.cars.find(c=>!c.ai).gltf===true,'машина игрока — настоящая Ferrari');
+  ok(pi0.dpr<=1.0,'DPR телефона ограничен 1.0: '+pi0.dpr);
+  ok(pi0.shadows===true,'тени на старте включены');
+
+  PG.game.state='racing';
+  for(let i=0;i<70;i++)PG._perfTick(1/30);        // ~2.3 с по 30 FPS
+  const pi1=PG.perfInfo();
+  ok(pi1.lvl>=1,'просадка до 30 FPS опустила качество: ступень '+pi1.lvl);
+  ok(pi1.dpr<pi0.dpr,'разрешение уменьшено: dpr '+pi1.dpr);
+  for(let i=0;i<70;i++)PG._perfTick(1/30);
+  const pi2=PG.perfInfo();
+  ok(pi2.lvl===2&&pi2.shadows===false,'далее ступень 2 — без теней: lvl '+pi2.lvl);
+  for(let i=0;i<700;i++)PG._perfTick(1/60);       // ~11.7 с по 60 FPS
+  const pi3=PG.perfInfo();
+  ok(pi3.lvl===0&&pi3.shadows===true,'стабильные 60 FPS вернули качество: lvl '+pi3.lvl);
+  await ph.close?ph.close():null;
 
   section('Итог');
   console.log('проверок: '+checks+', провалено: '+fails);
