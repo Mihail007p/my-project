@@ -390,6 +390,25 @@ async function raceCheck(G,label){
     'игроку объяснили, что машина запасная: «'+bad.el('modelStatus').textContent+'»');
   ok(BG.carInfo().gltf===false,'в гонке запасная (процедурная) машина');
   ok(BG.carInfo().wheels===4,'у запасной машины тоже 4 колеса');
+
+  /* пропорции запасной машины — низкий суперкар по референсу, а не «кирпич».
+     Меряем в локальных координатах: на время снимаем поворот/позицию со стартовой
+     решётки, иначе бокс измеряет повёрнутую машину и врёт. */
+  const TH=bad.sandbox.THREE;
+  const pm=BG.player.mesh;
+  const keepP=pm.position.clone(),keepR=pm.rotation.clone();
+  pm.position.set(0,0,0);pm.rotation.set(0,0,0);
+  pm.updateMatrixWorld(true);
+  const bb=new TH.Box3().setFromObject(pm);
+  pm.position.copy(keepP);pm.rotation.copy(keepR);pm.updateMatrixWorld(true);
+  const bs=bb.getSize(new TH.Vector3());
+  ok(bs.z>4.3&&bs.z<4.9,'запасная машина длиной как суперкар: '+bs.z.toFixed(2)+' м');
+  ok(bs.x>1.7&&bs.x<2.1,'запасная машина шириной как суперкар: '+bs.x.toFixed(2)+' м');
+  ok(bs.y>0.9&&bs.y<1.25,'запасная машина низкая, силуэт не «кирпич»: '+bs.y.toFixed(2)+' м');
+  ok(Math.abs(bb.min.y)<0.02,'запасная машина стоит колёсами на земле');
+  const gi=BG.carInfo();
+  ok(gi.meshes>=25,'запасная машина детализирована: '+gi.meshes+' мешей (кокпит, стекло, фары, диски)');
+  ok(gi.tailLights===true,'у запасной машины стоп-сигналы подключены');
   ok(BG.tryStart()===true,'гонка начинается и без 3D-модели');
   for(let i=0;i<60*6;i++)BG.tick(1/60);
   ok(BG.game.state==='racing'||BG.game.state==='finished','заезд идёт: '+BG.game.state);

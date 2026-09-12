@@ -78,6 +78,8 @@
   #timeBest b{color:#7fe08f}
   #minimap{position:absolute;top:14px;right:14px;width:168px;height:168px;padding:6px}
   #gauge{position:absolute;right:14px;bottom:14px;width:196px;height:196px}
+  /* на сенсорных экранах спидометр уходит влево над стрелки — иначе кнопка ГАЗ его перекрывает */
+  body.touch #gauge{right:auto;left:10px;bottom:128px;width:150px;height:150px}
   #toast{position:absolute;top:22%;left:50%;transform:translateX(-50%);padding:10px 26px;border-radius:10px;
     background:var(--panel2);border:1px solid var(--line);font-size:17px;font-weight:800;letter-spacing:1.5px;
     opacity:0;transition:opacity .3s}
@@ -123,9 +125,11 @@
   @media (max-width:760px){
     #minimap{width:118px;height:118px}
     #btnSound{top:146px}#btnCam{top:198px}#btnReset{top:250px}#btnPause{top:302px}
-    #gauge{width:150px;height:150px;right:8px;bottom:8px}
     #hudBoxTL{padding:9px 12px}#posBig{font-size:30px}
-    #tBrake{bottom:128px} #tDrift{bottom:212px}
+    body.touch #gauge{width:124px;height:124px;left:8px;bottom:122px}
+    #tGas{right:14px;bottom:20px;width:96px;height:100px}
+    #tBrake{right:118px;bottom:20px;width:84px;height:84px}
+    #tDrift{right:118px;bottom:112px;width:84px;height:52px}
   }
 </style>
 </head>
@@ -4782,7 +4786,10 @@ let renderer,scene,camera,sunLight,hemiLight;
 const clock={last:0};
 try{
   renderer=new THREE.WebGLRenderer({canvas:$('gl'),antialias:true,powerPreference:'high-performance'});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  /* на телефонах DPR 3-4 превращает кадр в 8 млн пикселей — ограничиваем,
+   иначе 359 тыс. треугольников модели съедят все кадры в секунду */
+const DPR_CAP=(navigator.maxTouchPoints>0||matchMedia('(pointer: coarse)').matches)?1.5:2;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,DPR_CAP));
   renderer.setSize(window.innerWidth,window.innerHeight);
   renderer.shadowMap.enabled=true;
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;
@@ -5181,190 +5188,145 @@ function mergeGeoms(items){ // [{g,matrix?}] -> один BufferGeometry
   g.setIndex(idx);
   return g;
 }
-function extrudeProfile(pts,depth,bevel){ // профиль (x=вперёд,y=вверх) -> геометрия по +Z, центрированная по ширине
-  const sh=new THREE.Shape();
-  sh.moveTo(pts[0][0],pts[0][1]);
-  for(let i=1;i<pts.length;i++)sh.lineTo(pts[i][0],pts[i][1]);
-  sh.closePath();
-  const g=new THREE.ExtrudeGeometry(sh,{depth,bevelEnabled:true,bevelThickness:bevel,bevelSize:bevel,bevelSegments:2,steps:1});
-  g.rotateY(-Math.PI/2);      // нос по +Z, ширина вдоль X
-  g.translate(depth/2,0,0);   // центр по ширине
+/* ---------------- ЗАПАСНАЯ МАШИНА (процедурная) ----------------
+   Рисуется по референсам из PNG проекта (hero-car-v2.png, q-rear34.png):
+   низкий открытый суперкар — клиновидный нос, покатые бока с выраженными
+   задними арками, открытая кабина с кокпитом и сиденьями, низкое наклонное
+   лобовое стекло, узкая световая полоса сзади, пятилучевые диски с жёлтыми
+   суппортами. Корпус — лофт поперечных сечений вдоль Z: прежняя экструзия
+   плоского силуэта давала «кирпич с чёрной коробкой сверху». */
+function loftHull(st){
+  /* станция: [z, полуширина, пол, пояс, крыша]; кольцо из 10 точек */
+  const P=[],I=[];
+  const ring=s=>{
+    const z=s[0],w=s[1],f=s[2],b=s[3],t=s[4];
+    return [[-w*.72,f],[-w,f+.10],[-w,b],[-w*.82,t-.05],[-w*.40,t],
+            [ w*.40,t],[ w*.82,t-.05],[ w,b],[ w,f+.10],[ w*.72,f]]
+      .map(q=>[q[0],q[1],z]);
+  };
+  st.forEach(s=>ring(s).forEach(q=>P.push(q[0],q[1],q[2])));
+  for(let i=0;i<st.length-1;i++)for(let k=0;k<10;k++){
+    const a=i*10+k,b=i*10+(k+1)%10,c=(i+1)*10+(k+1)%10,d=(i+1)*10+k;
+    I.push(a,b,c,a,c,d);
+  }
+  const cap=(base,dir)=>{
+    const c=P.length/3;
+    let sx=0,sy=0,sz=0;
+    for(let k=0;k<10;k++){sx+=P[(base+k)*3];sy+=P[(base+k)*3+1];sz+=P[(base+k)*3+2];}
+    P.push(sx/10,sy/10,sz/10);
+    for(let k=0;k<10;k++){
+      const a=base+k,b=base+(k+1)%10;
+      if(dir>0)I.push(a,b,c);else I.push(b,a,c);
+    }
+  };
+  cap(0,-1);cap((st.length-1)*10,1);
+  /* нормали наружу: знак объёма говорит, не вывернуты ли грани */
+  let vol=0;
+  for(let i=0;i<I.length;i+=3){
+    const a=I[i]*3,b=I[i+1]*3,c=I[i+2]*3;
+    vol+=(P[a]*(P[b+1]*P[c+2]-P[b+2]*P[c+1])
+         -P[a+1]*(P[b]*P[c+2]-P[b+2]*P[c])
+         +P[a+2]*(P[b]*P[c+1]-P[b+1]*P[c]))/6;
+  }
+  if(vol<0)for(let i=0;i<I.length;i+=3){const t=I[i+1];I[i+1]=I[i+2];I[i+2]=t;}
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
+  g.setIndex(I);
+  g.computeVertexNormals();
   return g;
 }
-
-/* профиль кузова (вид сбоку): низкий клин, приподнятая корма-дакктейл */
-const BODY_PTS=[
-  [-2.24,0.30],[-2.30,0.62],[-2.14,0.84],[-1.30,0.86],
-  [ 0.55,0.88],[ 1.55,0.82],[ 2.08,0.64],[ 2.28,0.42],
-  [ 2.22,0.18],[ 1.88,0.12],[-1.88,0.12],[-2.18,0.16]
-];
-/* профиль кабины (остекление) */
-const CAB_PTS=[[-1.42,0.00],[-0.78,0.46],[0.22,0.48],[0.94,0.02]];
-
 function buildCarMesh(colorHex,isPlayer){
   const grp=new THREE.Group();
-  const bodyMat=new THREE.MeshStandardMaterial({color:colorHex,metalness:.72,roughness:.30});
-  const carbon=new THREE.MeshStandardMaterial({color:0x121316,metalness:.35,roughness:.55});
-  const glass=new THREE.MeshStandardMaterial({color:0x0b1016,metalness:.92,roughness:.10});
-  const chrome=new THREE.MeshStandardMaterial({color:0xd7dce2,metalness:1,roughness:.25});
-  const M4=new THREE.Matrix4,E=new THREE.Euler,Q=new THREE.Quaternion,V=new THREE.Vector3;
-  const put=(g,mat,x,y,z,rx,ry,rz)=>{
-    const m=new THREE.Mesh(g,mat);
-    m.position.set(x,y,z);
-    if(rx||ry||rz){m.rotation.set(rx||0,ry||0,rz||0);}
-    m.castShadow=true;grp.add(m);return m;
+  const bodyMat=new THREE.MeshStandardMaterial({color:colorHex,metalness:.85,roughness:.28});
+  const carbon=new THREE.MeshStandardMaterial({color:0x101216,metalness:.4,roughness:.55});
+  const glass=new THREE.MeshStandardMaterial({color:0x0a0f14,metalness:.9,roughness:.12,
+    transparent:true,opacity:.85});
+  const interior=new THREE.MeshStandardMaterial({color:0x16191e,metalness:.2,roughness:.8});
+  const rimM=new THREE.MeshStandardMaterial({color:0xc9ced6,metalness:1,roughness:.28});
+  const tireM=new THREE.MeshStandardMaterial({color:0x141518,roughness:.95});
+  const calM=new THREE.MeshStandardMaterial({color:0xf2c400,metalness:.4,roughness:.4});   // суппорты как на референсе
+  const tailMat=new THREE.MeshStandardMaterial({color:0x550a0c,emissive:0xff1e1e,emissiveIntensity:.5});
+  const headMat=new THREE.MeshStandardMaterial({color:0xf8f6e8,emissive:0xfff3c2,emissiveIntensity:isPlayer?1.5:1.0});
+  const put=(g,m,x,y,z,rx,ry,rz)=>{
+    const o=new THREE.Mesh(g,m);
+    o.position.set(x,y,z);
+    if(rx||ry||rz)o.rotation.set(rx||0,ry||0,rz||0);
+    o.castShadow=true;grp.add(o);return o;
   };
+  const box=(x,y,z)=>new THREE.BoxGeometry(x,y,z);
 
-  /* --- кузов --- */
-  const bodyGeo=extrudeProfile(BODY_PTS,1.62,.11);
-  const body=new THREE.Mesh(bodyGeo,bodyMat);
-  body.geometry.translate(0,.16,0);
+  /* --- кузов: поперечные сечения [z, полуширина, пол, пояс, крыша], корма → нос --- */
+  const hull=loftHull([
+    [-2.30,.78,.34,.60,.72],
+    [-2.16,.90,.24,.58,.82],
+    [-1.72,.96,.17,.56,.88],   // задние арки-«бёдра»
+    [-1.22,.94,.15,.55,.86],   // палуба за сиденьями
+    [-0.98,.90,.14,.54,.66],   // задняя кромка открытой кабины
+    [-0.35,.87,.13,.54,.58],   // кокпит
+    [ 0.12,.85,.13,.54,.64],   // капот у стекла
+    [ 0.70,.86,.14,.54,.60],
+    [ 1.30,.90,.15,.53,.58],
+    [ 1.50,.90,.16,.52,.66],   // переднее крыло над колесом
+    [ 1.85,.87,.17,.49,.47],   // крылья у носа
+    [ 2.18,.70,.22,.41,.36],
+    [ 2.30,.50,.28,.33,.30]
+  ]);
+  const body=new THREE.Mesh(hull,bodyMat);
   body.castShadow=true;body.receiveShadow=true;grp.add(body);
 
-  /* --- кабина: зауженное тёмное стекло с наклонными стойками --- */
-  const cabGeo=extrudeProfile(CAB_PTS,1.22,.05);
-  cabGeo.translate(0,.97,0);
-  // сужаем крышу по высоте и длине (купе-капля)
-  {
-    const p=cabGeo.attributes.position;
-    for(let i=0;i<p.count;i++){
-      const y=p.getY(i),z=p.getZ(i);
-      let k=1-Math.max(0,y-0.97)*0.75;            // уже к крыше (сильнее)
-      k*=1-Math.max(0,z-0.15)*0.42;               // лобовое наклон-сужение
-      k*=1-Math.max(0,-z-0.45)*0.44;              // заднее стекло
-      p.setX(i,p.getX(i)*k);
-    }
-    cabGeo.computeVertexNormals();
+  /* --- открытая кабина: кокпит, сиденья с подголовниками, стекло --- */
+  put(box(1.24,.16,1.02),interior,0,.56,-.45);
+  for(const sx of[-.33,.33]){
+    const seat=put(box(.34,.30,.16),interior,sx,.68,-.80);seat.rotation.x=-.24;
+    put(box(.24,.12,.09),interior,sx,.86,-.88);          // подголовник
   }
-  const cab=new THREE.Mesh(cabGeo,glass);
-  cab.castShadow=true;grp.add(cab);
+  const ws=put(box(1.20,.02,.48),glass,0,.80,-.02);ws.rotation.x=.95;   // низкое наклонное стекло
+  const fr=put(box(1.22,.035,.06),carbon,0,.975,-.145);fr.rotation.x=.95; // рамка стекла
+  for(const sx of[-.80,.80])put(box(.14,.03,.09),carbon,sx,.58,.14);     // зеркала
 
-  /* --- двойные виниловые полосы: ленты точно по верхней поверхности (игроку) --- */
-  if(isPlayer){
-    // [z, y] — измеренные высоты поверхности (x=0.17..0.43 зона плоская)
-    const hood=[[0.85,1.130],[1.0,1.123],[1.2,1.111],[1.4,1.099],[1.6,1.079],[1.8,1.011],[2.0,0.943]];
-    const deck=[[-2.02,1.166],[-1.8,1.118],[-1.6,1.123],[-1.4,1.128],[-1.25,1.163]];
-    const ribbon=(pts,cx,w)=>{
-      const pos=[],idx=[];const stride=2;
-      for(const[z,y]of pts){
-        pos.push(cx-w/2,y+0.013,z, cx+w/2,y+0.013,z);
-        const vi=pos.length/3-stride;      // номер первой вершины текущего сегмента
-        if(vi>0){idx.push(vi-2,vi,vi-1, vi-1,vi,vi+1);} // нормали вверх
-      }
-      const g=new THREE.BufferGeometry();
-      g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-      g.setIndex(idx);g.computeVertexNormals();
-      return g;
-    };
-    const stripeMat=new THREE.MeshStandardMaterial({color:0x0e1013,metalness:.45,roughness:.5});
-    for(const cx of[-0.30,0.30]){
-      grp.add(new THREE.Mesh(ribbon(hood,cx,.27),stripeMat));
-      grp.add(new THREE.Mesh(ribbon(deck,cx,.27),stripeMat));
-    }
+  /* --- свет и обвес --- */
+  for(const sx of[-.55,.55]){
+    const h=put(box(.42,.035,.09),headMat,sx,.43,1.82);
+    h.rotation.y=sx>0?-.38:.38;h.rotation.x=-.15;
+  }
+  put(box(1.44,.15,.05),carbon,0,.60,-2.285);                            // панель кормы
+  for(const sx of[-.58,-.30,.30,.58]){
+    const t=put(new THREE.CylinderGeometry(.07,.07,.06,12),tailMat,sx,.60,-2.30);
+    t.rotation.x=Math.PI/2;
+  }
+  put(box(1.36,.04,.34),carbon,0,.14,2.02);                              // сплиттер
+  const dif=put(box(1.50,.06,.40),carbon,0,.22,-2.16);dif.rotation.x=-.22;
+  for(const sx of[-.92,.92])put(box(.05,.14,.40),carbon,sx,.40,-1.05);   // боковые воздухозаборники
+  for(const sx of[-.88,.88])put(box(.05,.11,2.06),carbon,sx,.20,0);      // пороги между колёсами
+  for(const sx of[-.28,.28]){
+    const e=put(new THREE.CylinderGeometry(.05,.05,.10,10),carbon,sx,.30,-2.33);
+    e.rotation.x=Math.PI/2;
   }
 
-  /* --- капот: вентиляционные прорези --- */
-  {
-    const ventM=new THREE.Matrix4().makeRotationX(0.058); // наклон капота
-    const vents=mergeGeoms([-0.46,0.46].map(x=>({g:new THREE.BoxGeometry(.30,.03,.50),
-      matrix:ventM.clone().multiply(new THREE.Matrix4().makeTranslation(x,1.126,1.12))})));
-    put(vents,carbon,0,0,0,0,0,0);
-  }
-
-  /* --- передок: фары, решётка, сплиттер --- */
-  {
-    const hl=new THREE.CylinderGeometry(.115,.115,.06,16);hl.rotateX(Math.PI/2);
-    const hg=mergeGeoms([
-      ...[-0.63,0.63].map(x=>({g:hl,matrix:new THREE.Matrix4().makeTranslation(x,.72,2.27)})),
-      ...[-0.38,0.38].map(x=>({g:hl,matrix:new THREE.Matrix4().makeTranslation(x,.72,2.27)}))
-    ]);
-    put(hg,new THREE.MeshStandardMaterial({color:0xf8f6e8,emissive:0xfff3c2,emissiveIntensity:isPlayer?1.6:1.0}),0,0,0);
-    put(new THREE.BoxGeometry(.98,.16,.05),carbon,0,.42,2.30);            // решётка
-    put(new THREE.BoxGeometry(1.74,.05,.30),carbon,0,.155,2.18);          // сплиттер
-  }
-
-  /* --- корма: стопы, диффузор, выхлоп, дакктейл+крыло GT --- */
-  {
-    const tl=new THREE.BoxGeometry(.48,.09,.06);
-    const tg=mergeGeoms([-0.55,0.55].map(x=>({g:tl,matrix:new THREE.Matrix4().makeTranslation(x,.62,-2.372)})));
-    const tailMat=new THREE.MeshStandardMaterial({color:0x550a0c,emissive:0xff1e1e,emissiveIntensity:.5});
-    put(tg,tailMat,0,0,0);
-    put(new THREE.BoxGeometry(1.30,.05,.04),carbon,0,.62,-2.377);         // полоса между фонарями
-    put(new THREE.BoxGeometry(1.46,.10,.16),carbon,0,.17,-2.28);          // диффузор
-    const ex=new THREE.CylinderGeometry(.048,.048,.12,10);ex.rotateX(Math.PI/2);
-    const eg=mergeGeoms([-0.30,0.30].map(x=>({g:ex,matrix:new THREE.Matrix4().makeTranslation(x,.19,-2.30)})));
-    put(eg,chrome,0,0,0);
-    // крыло GT (только игроку — как на арте)
-    if(isPlayer){
-      const wing=mergeGeoms([
-        {g:new THREE.BoxGeometry(.055,.24,.14),matrix:new THREE.Matrix4().makeTranslation(-.52,1.085,-1.96)},
-        {g:new THREE.BoxGeometry(.055,.24,.14),matrix:new THREE.Matrix4().makeTranslation(.52,1.085,-1.96)},
-        {g:new THREE.BoxGeometry(1.56,.035,.32),matrix:new THREE.Matrix4().makeTranslation(0,1.225,-2.0)},
-        {g:new THREE.BoxGeometry(.028,.13,.30),matrix:new THREE.Matrix4().makeTranslation(-.79,1.225,-2.0)},
-        {g:new THREE.BoxGeometry(.028,.13,.30),matrix:new THREE.Matrix4().makeTranslation(.79,1.225,-2.0)}
-      ]);
-      put(wing,carbon,0,0,0,0,0,0);
-    }
-  }
-
-  /* --- пороги и зеркала --- */
-  {
-    const sk=mergeGeoms([-0.90,0.90].map(x=>({g:new THREE.BoxGeometry(.08,.07,2.30),
-      matrix:new THREE.Matrix4().makeTranslation(x,.155,0)})));
-    put(sk,carbon,0,0,0);
-    if(isPlayer){
-      const mir=mergeGeoms([
-        {g:new THREE.BoxGeometry(.14,.085,.05),matrix:new THREE.Matrix4().makeTranslation(-.99,1.07,.42)},
-        {g:new THREE.BoxGeometry(.14,.085,.05),matrix:new THREE.Matrix4().makeTranslation(.99,1.07,.42)}
-      ]);
-      put(mir,bodyMat,0,0,0);
-    }
-  }
-
-  /* --- днище --- */
-  put(new THREE.BoxGeometry(1.66,.14,4.05),carbon,0,.14,0);
-
-  /* --- колёса: тёмные диски с 5 спицами и оранжевыми суппортами --- */
-  const tireG=new THREE.CylinderGeometry(.345,.345,.26,18);tireG.rotateZ(Math.PI/2);
-  const tireM=new THREE.MeshStandardMaterial({color:0x141517,roughness:.95});
-  const rimM=new THREE.MeshStandardMaterial({color:0x0e0f11,metalness:.75,roughness:.35});
-  const spokeM=new THREE.MeshStandardMaterial({color:0x1b1d21,metalness:.8,roughness:.3});
-  const discM=new THREE.MeshStandardMaterial({color:0x8f949b,metalness:.9,roughness:.4});
-  const calM=new THREE.MeshStandardMaterial({color:0xff5a00,metalness:.3,roughness:.5});
-  const lipG=new THREE.TorusGeometry(.225,.02,6,20);
-  const hubG=new THREE.CylinderGeometry(.055,.055,.27,8);hubG.rotateZ(Math.PI/2);
-  const spokeG=(()=>{ // 5 спиц одной геометрией
-    const items=[];
-    for(let i=0;i<5;i++){
-      const a=i/5*TAU;
-      items.push({g:new THREE.BoxGeometry(.24,.055,.05),
-        matrix:new THREE.Matrix4().makeRotationZ(a).multiply(new THREE.Matrix4().makeTranslation(.115,0,0))});
-    }
-    return mergeGeoms(items);
-  })();
+  /* --- колёса: five-spoke как на референсе --- */
   const wheels=[];
-  for(const[wx,wz,front]of[[-.88,1.42,1],[.88,1.42,1],[-.88,-1.42,0],[.88,-1.42,0]]){
-    const wg=new THREE.Group();
-    const spin=new THREE.Group();
-    const t=new THREE.Mesh(tireG,tireM);t.castShadow=true;
-    spin.add(t);
-    const side=Math.sign(wx);
-    const lip=new THREE.Mesh(lipG,rimM);lip.rotation.y=Math.PI/2;lip.position.x=side*.115;
-    const hub=new THREE.Mesh(hubG,rimM);
-    const sp=new THREE.Mesh(spokeG,spokeM);
-    const disc=new THREE.Mesh(new THREE.CylinderGeometry(.155,.155,.03,16),discM);
-    disc.rotation.z=Math.PI/2;disc.position.x=side*.03;
-    spin.add(lip,hub,sp,disc);
-    wg.add(spin);
-    if(isPlayer){ // суппорт не вращается
-      const cal=new THREE.Mesh(new THREE.BoxGeometry(.05,.13,.09),calM);
-      cal.position.set(side*.02,.11,-.06);
-      wg.add(cal);
+  for(const[side,front]of[[-1,1],[1,1],[-1,0],[1,0]]){
+    const wg=new THREE.Group(),spin=new THREE.Group();
+    const tire=new THREE.Mesh(new THREE.CylinderGeometry(.345,.345,.26,20),tireM);
+    tire.rotation.z=Math.PI/2;tire.castShadow=true;spin.add(tire);
+    const rim=new THREE.Mesh(new THREE.CylinderGeometry(.215,.215,.27,16),rimM);
+    rim.rotation.z=Math.PI/2;spin.add(rim);
+    for(let k=0;k<5;k++){
+      const sg=new THREE.Group();sg.rotation.x=k*Math.PI*2/5;
+      const sp=new THREE.Mesh(box(.28,.22,.045),rimM);
+      sp.position.y=.11;sg.add(sp);spin.add(sg);
     }
-    wg.position.set(wx,.345,wz);
-    grp.add(wg);wheels.push({wg,spin,front});
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.30,10),rimM);
+    hub.rotation.z=Math.PI/2;spin.add(hub);
+    const capM=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.315,10),calM);
+    capM.rotation.z=Math.PI/2;spin.add(capM);
+    wg.add(spin);
+    const cal=put(box(.05,.13,.09),calM,0,0,0);                          // суппорт не вращается
+    grp.remove(cal);cal.position.set(0,.13,-.08);wg.add(cal);
+    wg.position.set(side*.755,.345,front?1.47:-1.47);
+    grp.add(wg);
+    wheels.push({wg,spin,front:!!front});
   }
-
   return {grp,wheels,bodyMat,tailM:null};
 }
 
