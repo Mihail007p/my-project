@@ -786,12 +786,25 @@ function physStep(c,dt){
   }else if(prev<70&&c.s>track.L-70&&c.vf<0){ c.lap--; }
   // обочина
   c.offroad=Math.abs(c.lat)>CFG.halfRoad-0.7;
-  // отбойник
-  if(Math.abs(c.lat)>CFG.wallLat-0.75){
-    const i=c.idx,r=track.rights[i],lim=(CFG.wallLat-0.75)*Math.sign(c.lat);
+  // отбойник (захват чуть раньше стены, чтобы машина не «зависала» на обочине)
+  if(Math.abs(c.lat)>CFG.wallLat-1.1){
+    const i=c.idx,r=track.rights[i],lim=(CFG.wallLat-1.25)*Math.sign(c.lat);
     c.pos.x+=r.x*(lim-c.lat); c.pos.z+=r.z*(lim-c.lat);
-    c.vl*=-0.25; c.vf*=0.955; c.lat=lim;
-    if(!c.isAI){camShake=Math.max(camShake,Math.min(.5,Math.abs(c.vl)*.06+Math.abs(c.vf)*.002)); sfxHit(Math.abs(c.vf));}
+    // скольжение вдоль отбойника: убираем скорость В стену
+    const n={x:r.x*Math.sign(c.lat),z:r.z*Math.sign(c.lat)};
+    let wx=fwd2.x*c.vf+rgt2.x*c.vl, wz=fwd2.z*c.vf+rgt2.z*c.vl;
+    const vn=wx*n.x+wz*n.z;
+    if(vn<0){ wx-=n.x*vn*1.1; wz-=n.z*vn*1.1; }    // мягкий отскок
+    const wfr=Math.exp(-0.7*dt);                    // лёгкое трение о стену (независимо от FPS)
+    wx*=wfr; wz*=wfr;
+    wx-=n.x*0.8; wz-=n.z*0.8;                       // отталкивание, чтобы не ехать по стене
+    c.vf=wx*fwd2.x+wz*fwd2.z;
+    c.vl=wx*rgt2.x+wz*rgt2.z;
+    c.lat=lim;
+    // доворачиваем нос строго по ходу трассы — не даём ездить вдоль отбойника задом
+    const dirA=Math.atan2(track.dirs[i].x,track.dirs[i].z);
+    c.heading+=wrapAngle(dirA-c.heading)*Math.min(1,6*dt);
+    if(!c.isAI){camShake=Math.max(camShake,Math.min(.5,Math.abs(vn)*.05+Math.abs(c.vf)*.002)); sfxHit(Math.abs(vn)*3);}
   }
   // визуальные крены
   const rollT=clamp(-c.vl*0.014-c.steer*0.05*Math.min(1,c.vf/30),-.13,.13);

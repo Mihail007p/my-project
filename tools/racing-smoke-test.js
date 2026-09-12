@@ -123,4 +123,19 @@ assert(isFinite(P.pos.x)&&isFinite(P.vf),'игроковая физика ста
 assert(P.lap>=1,'игрок проехал минимум 1 круг (круг: '+P.lap+')');
 assert(G.game.wrongWayT<30,'детектор разворота не сошёл с ума');
 
+// --- регрессия: отбойник. Врезаемся влево, затем возвращаемся на дорогу ---
+G.input.up=false;G.input.down=true;G.input.left=false;G.input.right=false;
+for(let i=0;i<60*2;i++)G.tick(1/60);          // тормозим до ~50-60 км/ч
+G.input.down=false;G.input.left=true;G.input.up=true;
+let hitWall=false;
+for(let i=0;i<60*8;i++){G.tick(1/60);if(Math.abs(P.lat)>6.9)hitWall=true;}
+const vAtWall=Math.round(P.vf*3.6);
+G.input.left=false;G.input.right=true;
+let recovered=false;
+for(let i=0;i<60*20;i++){G.tick(1/60);
+  if(Math.abs(P.lat)<3.5&&P.vf>10){recovered=true;break;}}
+assert(hitWall,'машина достигла отбойника');
+assert(vAtWall>10,'скорость у стены не умирает в ноль ('+vAtWall+' км/ч)');
+assert(recovered,'выход из отбойника за <20 с (lat='+P.lat.toFixed(1)+', v='+Math.round(P.vf*3.6)+' км/ч)');
+
 console.log('\nALL TESTS PASSED ✅');
