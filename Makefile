@@ -1,6 +1,6 @@
 PY := python3
 
-.PHONY: help build test stats shots serve remote play docs racing car
+.PHONY: help build test stats shots serve remote play docs racing car render
 
 help:               ## список команд
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -23,6 +23,9 @@ racing:             ## смоук-тест гонки: трасса, ИИ, фи�
 
 car:                ## тест машины: Draco-модель, блокировка старта, офлайн-сборка (Node)
 	node tools/car-model-test.js
+
+render:             ## софтверные PNG-рендеры машины без браузера (tools/soft-render-out/)
+	node tools/soft-render.js
 
 test: build stats play racing car   ## всё, что проверяется без браузера
 	@if [ -d /tmp/shot/node_modules/puppeteer ] && \

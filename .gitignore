@@ -51,3 +51,6 @@ target/
 *.log
 logs/
 tmp/
+
+# --- soft-render вывод ---
+tools/soft-render-out/
