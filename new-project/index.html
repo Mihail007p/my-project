@@ -173,7 +173,12 @@
     <div class="optLabel">Цвет твоей машины</div>
     <div id="swatches"></div>
     <button class="btn primary" id="btnStart">ПОЕХАЛИ &nbsp;▶</button>
+<<<<<<< HEAD
     <div id="controlsHint">
+=======
+    <div id="modelStatus" style="margin-top:12px;font-size:12px;letter-spacing:1px;color:#7fe08f">⏳ Загрузка 3D-модели Ferrari…</div>
+  <div id="controlsHint">
+>>>>>>> f20b88b (racing: совместимость с телефонами — модель без Draco (KHR_mesh_quantization, работает на любом GPU/браузере), индикатор загрузки модели в меню, play.html обновлён)
       <b>W A S D</b> / <b>← ↑ ↓ →</b> — руль и газ · <b>Пробел</b> — дрифт (ручник)<br>
       <b>C</b> — камера · <b>R</b> — на трассу · <b>M</b> — звук · <b>Esc</b> — пауза<br>
       На телефоне — сенсорные кнопки на экране
@@ -285,7 +290,11 @@ const assets={carTemplate:null,ready:false};
       draco.setDecoderConfig({type:'js'});
       loader.setDRACOLoader(draco);
     }
+<<<<<<< HEAD
     loader.load('assets/ferrari.glb',gltf=>{
+=======
+    loader.load('assets/ferrari-plain.glb',gltf=>{
+>>>>>>> f20b88b (racing: совместимость с телефонами — модель без Draco (KHR_mesh_quantization, работает на любом GPU/браузере), индикатор загрузки модели в меню, play.html обновлён)
       try{
         const src=gltf.scene.children[0]||gltf.scene;
         // нормализуем: длина по Z, ровно 4.5 м, на земле
@@ -309,9 +318,21 @@ const assets={carTemplate:null,ready:false};
         src.position.y-=box3.min.y;                  // колёса на y=0
         src.traverse(o=>{if(o.isMesh)o.castShadow=true;});
         assets.carTemplate=src;assets.ready=true;
+<<<<<<< HEAD
         console.log('Ferrari 458 загружена ✓');
       }catch(e){console.warn('не удалось подготовить модель:',e);}
     },undefined,err=>console.warn('модель не загрузилась:',err&&err.message||err));
+=======
+        const ms=document.getElementById('modelStatus');
+        if(ms){ms.textContent='✓ Настоящая 3D-модель Ferrari 458 загружена';ms.style.color='#7fe08f';}
+        console.log('Ferrari 458 загружена ✓');
+      }catch(e){console.warn('не удалось подготовить модель:',e);}
+    },undefined,err=>{
+      const ms=document.getElementById('modelStatus');
+      if(ms){ms.textContent='⚠ Модель не загрузилась — включён запасной автомобиль';ms.style.color='#ffb347';}
+      console.warn('модель не загрузилась:',err&&err.message||err);
+    });
+>>>>>>> f20b88b (racing: совместимость с телефонами — модель без Draco (KHR_mesh_quantization, работает на любом GPU/браузере), индикатор загрузки модели в меню, play.html обновлён)
   }
   if(window.THREE&&THREE.GLTFLoader)init(THREE.GLTFLoader);
   else window.addEventListener('load',()=>{ if(window.THREE&&THREE.GLTFLoader)init(THREE.GLTFLoader); });
