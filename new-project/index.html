@@ -173,12 +173,8 @@
     <div class="optLabel">Цвет твоей машины</div>
     <div id="swatches"></div>
     <button class="btn primary" id="btnStart">ПОЕХАЛИ &nbsp;▶</button>
-<<<<<<< HEAD
-    <div id="controlsHint">
-=======
     <div id="modelStatus" style="margin-top:12px;font-size:12px;letter-spacing:1px;color:#7fe08f">⏳ Загрузка 3D-модели Ferrari…</div>
   <div id="controlsHint">
->>>>>>> f20b88b (racing: совместимость с телефонами — модель без Draco (KHR_mesh_quantization, работает на любом GPU/браузере), индикатор загрузки модели в меню, play.html обновлён)
       <b>W A S D</b> / <b>← ↑ ↓ →</b> — руль и газ · <b>Пробел</b> — дрифт (ручник)<br>
       <b>C</b> — камера · <b>R</b> — на трассу · <b>M</b> — звук · <b>Esc</b> — пауза<br>
       На телефоне — сенсорные кнопки на экране
@@ -215,7 +211,6 @@
 
 <script src="lib/three.min.js"></script>
 <script src="assets/GLTFLoader.js"></script>
-<script src="assets/DRACOLoader.js"></script>
 <script>
   /* резерв: если локальный движок не загрузился — тянем с CDN напрямую в браузер */
   if(typeof THREE==='undefined'){
@@ -284,17 +279,7 @@ const assets={carTemplate:null,ready:false};
 (function preloadCar(){
   function init(GL){
     const loader=new GL();
-    if(THREE.DRACOLoader){
-      const draco=new THREE.DRACOLoader();
-      draco.setDecoderPath('assets/draco/');
-      draco.setDecoderConfig({type:'js'});
-      loader.setDRACOLoader(draco);
-    }
-<<<<<<< HEAD
-    loader.load('assets/ferrari.glb',gltf=>{
-=======
     loader.load('assets/ferrari-plain.glb',gltf=>{
->>>>>>> f20b88b (racing: совместимость с телефонами — модель без Draco (KHR_mesh_quantization, работает на любом GPU/браузере), индикатор загрузки модели в меню, play.html обновлён)
       try{
         const src=gltf.scene.children[0]||gltf.scene;
         // нормализуем: длина по Z, ровно 4.5 м, на земле
@@ -318,21 +303,20 @@ const assets={carTemplate:null,ready:false};
         src.position.y-=box3.min.y;                  // колёса на y=0
         src.traverse(o=>{if(o.isMesh)o.castShadow=true;});
         assets.carTemplate=src;assets.ready=true;
-<<<<<<< HEAD
-        console.log('Ferrari 458 загружена ✓');
-      }catch(e){console.warn('не удалось подготовить модель:',e);}
-    },undefined,err=>console.warn('модель не загрузилась:',err&&err.message||err));
-=======
         const ms=document.getElementById('modelStatus');
         if(ms){ms.textContent='✓ Настоящая 3D-модель Ferrari 458 загружена';ms.style.color='#7fe08f';}
         console.log('Ferrari 458 загружена ✓');
       }catch(e){console.warn('не удалось подготовить модель:',e);}
-    },undefined,err=>{
+    },xhr=>{
+      if(xhr.total&&xhr.lengthComputable){
+        const ms=document.getElementById('modelStatus');
+        if(ms&&!assets.ready)ms.textContent='⏳ Загрузка Ferrari: '+Math.round(xhr.loaded/xhr.total*100)+'%';
+      }
+    },err=>{
       const ms=document.getElementById('modelStatus');
       if(ms){ms.textContent='⚠ Модель не загрузилась — включён запасной автомобиль';ms.style.color='#ffb347';}
       console.warn('модель не загрузилась:',err&&err.message||err);
     });
->>>>>>> f20b88b (racing: совместимость с телефонами — модель без Draco (KHR_mesh_quantization, работает на любом GPU/браузере), индикатор загрузки модели в меню, play.html обновлён)
   }
   if(window.THREE&&THREE.GLTFLoader)init(THREE.GLTFLoader);
   else window.addEventListener('load',()=>{ if(window.THREE&&THREE.GLTFLoader)init(THREE.GLTFLoader); });
@@ -397,6 +381,13 @@ try{
   $('loading').textContent='⚠ WebGL недоступен в этом браузере';
   throw e;
 }
+renderer.domElement.addEventListener('webglcontextlost',function(e){
+  e.preventDefault();
+  const l=document.getElementById('loading');
+  l.style.display='flex';
+  l.innerHTML='<div style="text-align:center;font-size:15px;line-height:2">⚠ Телефон выгрузил графику из памяти'+
+    '<br><span onclick="location.reload()" style="cursor:pointer;text-decoration:underline;color:#ffb347">↻ Коснись, чтобы перезапустить</span></div>';
+},false);
 scene=new THREE.Scene();
 scene.fog=new THREE.Fog(0xc3d5e8,300,1250);
 camera=new THREE.PerspectiveCamera(62,window.innerWidth/window.innerHeight,0.3,2200);
@@ -1634,6 +1625,7 @@ window.addEventListener('resize',()=>{
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth,window.innerHeight);
 });
+window.addEventListener('pageshow',e=>{if(e.persisted)location.reload();});
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden&&(game.state==='racing'||game.state==='countdown')&&!game.paused)togglePause();
 });
