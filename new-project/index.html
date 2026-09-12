@@ -209,6 +209,8 @@
 </div>
 
 <script src="lib/three.min.js"></script>
+<script src="assets/GLTFLoader.js"></script>
+<script src="assets/DRACOLoader.js"></script>
 <script>
   /* резерв: если локальный движок не загрузился — тянем с CDN напрямую в браузер */
   if(typeof THREE==='undefined'){
@@ -271,6 +273,85 @@ const DIFFS={
   normal:{skill:[0.90,0.985],aLat:9.6,  vmax:71},
   hard:  {skill:[0.97,1.06], aLat:11.2, vmax:76}
 };
+
+/* ---------------- ПРЕЛОАДЕР РЕАЛЬНОЙ 3D-МОДЕЛИ (Ferrari 458, three.js examples) ---------------- */
+const assets={carTemplate:null,ready:false};
+(function preloadCar(){
+  function init(GL){
+    const loader=new GL();
+    if(THREE.DRACOLoader){
+      const draco=new THREE.DRACOLoader();
+      draco.setDecoderPath('assets/draco/');
+      draco.setDecoderConfig({type:'js'});
+      loader.setDRACOLoader(draco);
+    }
+    loader.load('assets/ferrari.glb',gltf=>{
+      try{
+        const src=gltf.scene.children[0]||gltf.scene;
+        // нормализуем: длина по Z, ровно 4.5 м, на земле
+        const box=new THREE.Box3().setFromObject(src);
+        const size=box.getSize(new THREE.Vector3());
+        if(size.x>size.z)src.rotation.y=Math.PI/2;   // модель вдоль X — разворачиваем
+        src.updateMatrixWorld(true);
+        const wf=src.getObjectByName('wheel_fl'),wr=src.getObjectByName('wheel_rl');
+        if(wf&&wr){
+          const p1=new THREE.Vector3().setFromMatrixPosition(wf.matrixWorld);
+          const p2=new THREE.Vector3().setFromMatrixPosition(wr.matrixWorld);
+          if(p1.z<p2.z)src.rotation.y+=Math.PI;      // нос должен смотреть в +Z
+        }
+        src.updateMatrixWorld(true);
+        const box2=new THREE.Box3().setFromObject(src);
+        const s2=box2.getSize(new THREE.Vector3());
+        const k=4.55/Math.max(s2.x,s2.z);
+        src.scale.setScalar(k);
+        src.updateMatrixWorld(true);
+        const box3=new THREE.Box3().setFromObject(src);
+        src.position.y-=box3.min.y;                  // колёса на y=0
+        src.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+        assets.carTemplate=src;assets.ready=true;
+        console.log('Ferrari 458 загружена ✓');
+      }catch(e){console.warn('не удалось подготовить модель:',e);}
+    },undefined,err=>console.warn('модель не загрузилась:',err&&err.message||err));
+  }
+  if(window.THREE&&THREE.GLTFLoader)init(THREE.GLTFLoader);
+  else window.addEventListener('load',()=>{ if(window.THREE&&THREE.GLTFLoader)init(THREE.GLTFLoader); });
+})();
+function buildGltfCar(colorHex,isPlayer){
+  const outer=new THREE.Group();
+  const root=assets.carTemplate.clone(true);
+  const body=root.getObjectByName('body');
+  const bodyMat=new THREE.MeshPhysicalMaterial({color:colorHex,metalness:1.0,roughness:0.42,clearcoat:1.0,clearcoatRoughness:0.06});
+  if(body)body.material=bodyMat;
+  const glass=root.getObjectByName('glass');
+  if(glass)glass.material=new THREE.MeshPhysicalMaterial({color:0x0a0e13,metalness:.9,roughness:.08,clearcoat:1});
+  root.traverse(o=>{
+    if(o.isMesh){
+      o.castShadow=true;
+      if(o.material&&o.material.isMeshPhysicalMaterial&&o!==body){o.material.metalness=1;o.material.roughness=0.4;}
+    }
+  });
+  outer.add(root);
+  // колёса: передние — в держатель для руления
+  const wheels=[];
+  for(const[name,front]of[['wheel_fl',1],['wheel_fr',1],['wheel_rl',0],['wheel_rr',0]]){
+    const w=root.getObjectByName(name);
+    if(!w)continue;
+    if(front){
+      root.updateMatrixWorld(true);
+      const wp=new THREE.Vector3().setFromMatrixPosition(w.matrixWorld);
+      const holder=new THREE.Group();
+      holder.position.copy(root.worldToLocal(wp.clone()));
+      root.remove(w);
+      w.position.set(0,0,0);
+      holder.add(w);
+      root.add(holder);
+      wheels.push({wg:holder,spin:w,front:true});
+    }else{
+      wheels.push({wg:w,spin:w,front:false});
+    }
+  }
+  return {grp:outer,wheels,bodyMat,tailLights:null};
+}
 
 /* ---------------- СОСТОЯНИЕ ---------------- */
 const game={
@@ -867,7 +948,7 @@ function buildCarMesh(colorHex,isPlayer){
 class Car{
   constructor(name,colorHex,isAI,gridSlot){
     this.name=name; this.isAI=isAI;
-    const m=buildCarMesh(colorHex,isAI?false:true);
+    const m=assets.ready?buildGltfCar(colorHex,isAI?false:true):buildCarMesh(colorHex,isAI?false:true);
     this.mesh=m.grp; this.wheels=m.wheels; this.bodyMat=m.bodyMat;
     // собираем материал стоп-сигналов из группы
     this.tailLights=null;
