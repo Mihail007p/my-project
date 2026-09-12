@@ -37,7 +37,7 @@
   /* ---------- главное меню ---------- */
   #menu{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
     background:linear-gradient(100deg, rgba(5,7,10,.88) 0%, rgba(5,7,10,.55) 45%, rgba(5,7,10,.18) 100%),
-    url('assets/hero-car.jpg') center/cover no-repeat}
+    url('assets/hero-car-v2.jpg') center/cover no-repeat}
   #menuCard{width:min(520px, calc(100vw - 32px));padding:28px 30px 24px;text-align:center}
   #menuCard h1{font-size:clamp(34px,7vw,52px);font-weight:900;letter-spacing:4px;line-height:1;
     background:linear-gradient(180deg,#fff,#ffc890 60%,var(--accent));
@@ -265,7 +265,7 @@ const CFG={
   samples:1400,        // точек трассы
   laps:3,
   diff:'normal',
-  playerColor:'#e03428',
+  playerColor:'#d41818',
   camModes:[{back:8.0,up:3.1,look:8,fov:60},{back:5.6,up:2.15,look:7,fov:63},{back:0,up:0,look:0,fov:68}]
 };
 const DIFFS={
@@ -1143,7 +1143,8 @@ function setupRace(){
   cars.length=0;
   const d=DIFFS[CFG.diff];
   player=new Car('ТЫ',new THREE.Color(CFG.playerColor).getHex(),false,5);
-  player.topSpeed=80;
+  player.topSpeed=82;
+  player.engineAccel=15.5;
   cars.push(player);
   for(let i=0;i<AI_META.length;i++){
     const m=AI_META[i];
@@ -1587,7 +1588,7 @@ function bindChips(rowId,cb){
 bindChips('lapsRow',chip=>{CFG.laps=+chip.dataset.laps;});
 bindChips('diffRow',chip=>{CFG.diff=chip.dataset.diff;});
 {
-  const colors=['#e03428','#2a6fe0','#f2b705','#2fae5c','#8e5ce0','#e8e8e8'];
+  const colors=['#d41818','#e03428','#2a6fe0','#f2b705','#2fae5c','#8e5ce0'];
   const box=$('swatches');
   colors.forEach((c,i)=>{
     const d=document.createElement('div');
