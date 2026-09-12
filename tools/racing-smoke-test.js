@@ -2,9 +2,9 @@
 'use strict';
 const fs=require('fs'), path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'..','new-project','index.html'),'utf8');
-const m=html.match(/<script>\n([\s\S]*?)<\/script>/);
-if(!m){console.error('FAIL: inline script not found');process.exit(1);}
-const src=m[1];
+const blocks=[...html.matchAll(/<script>\n([\s\S]*?)<\/script>/g)].map(x=>x[1]);
+if(!blocks.length){console.error('FAIL: inline scripts not found');process.exit(1);}
+const src=blocks.join('\n;\n');
 
 /* --- стабы браузера --- */
 const ctx2d=new Proxy({},{

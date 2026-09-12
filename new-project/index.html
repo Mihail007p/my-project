@@ -205,6 +205,33 @@
 
 <script src="lib/three.min.js"></script>
 <script>
+  /* резерв: если локальный движок не загрузился — тянем с CDN напрямую в браузер */
+  if(typeof THREE==='undefined'){
+    document.write('<scr'+'ipt src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></scr'+'ipt>');
+  }
+</script>
+<script>
+  /* диагностика загрузки: вместо вечного «ЗАГРУЗКА ТРАССЫ…» — понятная ошибка */
+  window.addEventListener('error',function(ev){
+    var l=document.getElementById('loading');
+    if(l&&(!window.__game||window.__game.game.state==='loading')){
+      l.style.display='flex';
+      l.innerHTML='<div style="text-align:center;font-size:15px;line-height:2">⚠ Ошибка запуска: '+(ev.message||'неизвестная')+
+        '<br><span onclick="location.reload()" style="cursor:pointer;text-decoration:underline;color:#ffb347">↻ Перезагрузить страницу</span></div>';
+    }
+  });
+  setTimeout(function(){
+    var l=document.getElementById('loading');
+    if(typeof THREE==='undefined'&&l){
+      l.innerHTML='<div style="text-align:center;font-size:15px;line-height:2">⚠ Не удалось загрузить 3D-движок (проверь интернет).'+
+        '<br><span onclick="location.reload()" style="cursor:pointer;text-decoration:underline;color:#ffb347">↻ Перезагрузить страницу</span></div>';
+    }else if(l&&!window.__game){
+      l.innerHTML='<div style="text-align:center;font-size:15px;line-height:2">⏳ Инициализация затянулась.'+
+        '<br><span onclick="location.reload()" style="cursor:pointer;text-decoration:underline;color:#ffb347">↻ Перезагрузить страницу</span></div>';
+    }
+  },7000);
+</script>
+<script>
 'use strict';
 /* ================================================================
    STREET APEX — 3D аркадные уличные гонки в стиле NFS
