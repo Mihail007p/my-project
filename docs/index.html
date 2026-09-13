@@ -935,7 +935,8 @@ function loftHull(st){
 }
 function buildCarMesh(colorHex,isPlayer){
   const grp=new THREE.Group();
-  const bodyMat=new THREE.MeshStandardMaterial({color:colorHex,metalness:.85,roughness:.28});
+  const bodyMat=new THREE.MeshPhysicalMaterial({color:colorHex,metalness:.9,roughness:.2,
+    clearcoat:.85,clearcoatRoughness:.08});
   const carbon=new THREE.MeshStandardMaterial({color:0x101216,metalness:.4,roughness:.55});
   const glass=new THREE.MeshStandardMaterial({color:0x0a0f14,metalness:.9,roughness:.12,
     transparent:true,opacity:.85});
@@ -1035,50 +1036,55 @@ function buildCarMesh(colorHex,isPlayer){
 function buildOpponentCarMesh(colorHex,variant){
   const m=buildCarMesh(colorHex,false);
   const grp=m.grp;
-  const carbon=new THREE.MeshStandardMaterial({color:0x0d1014,metalness:.55,roughness:.42});
-  const glass=new THREE.MeshStandardMaterial({color:0x101725,metalness:.8,roughness:.12,
-    transparent:true,opacity:.88});
-  const chrome=new THREE.MeshStandardMaterial({color:0xbcc4ce,metalness:1,roughness:.22});
+  const carbon=new THREE.MeshStandardMaterial({color:0x0b0f15,metalness:.7,roughness:.3});
+  const glass=new THREE.MeshPhysicalMaterial({color:0x101b2b,metalness:.75,roughness:.08,
+    transparent:true,opacity:.82,clearcoat:1,clearcoatRoughness:.04});
+  const light=new THREE.MeshStandardMaterial({color:0xfff6d0,emissive:0xffe0a0,emissiveIntensity:1.8});
+  const tail=new THREE.MeshStandardMaterial({color:0x3b0508,emissive:0xff1822,emissiveIntensity:1.2});
   const put=(g,mat,x,y,z,rx=0,ry=0,rz=0)=>{
     const o=new THREE.Mesh(g,mat);o.position.set(x,y,z);o.rotation.set(rx,ry,rz);
     o.castShadow=true;grp.add(o);return o;
   };
   const box=(x,y,z)=>new THREE.BoxGeometry(x,y,z);
   const shape=[
-    [1.06,.88,1.04], // Falcon — низкий широкий суперкар
-    [.99,.84,1.08],  // Vortex — клиновидный electric
-    [1.10,1.00,1.02],// Baron — длинный muscle coupe
-    [.94,1.12,1.00], // Ghost — высокий раллийный hatchback
-    [1.12,.94,1.04]  // Titan — широкий бронированный трек-кар
+    [1.08,.84,1.05], // Falcon — широкий низкий гиперкар
+    [1.00,.80,1.08], // Vortex — клиновидный electric hypercar
+    [1.07,.94,1.06], // Baron — современный GT, не ретро muscle
+    [.98,1.04,1.03], // Ghost — современный rally-coupe
+    [1.12,.88,1.06]  // Titan — широкий track hypercar
   ][variant%5];
   grp.scale.set(shape[0],shape[1],shape[2]);
 
+  // Общие современные детали: гладкая стеклянная кабина и LED-фонари.
+  const canopy=put(new THREE.SphereGeometry(1,16,8),glass,0,.87,-.34);
+  canopy.scale.set(.63,.24,.72);
+  put(box(1.10,.035,.045),light,0,.47,1.86);
+  put(box(1.20,.045,.035),tail,0,.63,-2.34);
+  for(const sx of[-.72,.72])put(box(.06,.055,.035),tail,sx,.63,-2.33);
+
   if(variant===0){
-    // Большое антикрыло Falcon.
-    put(box(1.48,.07,.16),carbon,0,1.00,-1.78);
-    for(const sx of[-.56,.56])put(box(.07,.34,.07),carbon,sx,.84,-1.78);
+    // Falcon — чистый низкий суперкар с тонким active-спойлером.
+    put(box(1.48,.055,.12),carbon,0,1.02,-1.78);
+    for(const sx of[-.55,.55])put(box(.055,.28,.05),carbon,sx,.88,-1.78);
   }else if(variant===1){
-    // Vortex получает светлый носовой сплиттер и боковые лезвия.
-    put(box(1.48,.055,.30),chrome,0,.21,2.18);
-    for(const sx of[-.94,.94])put(box(.08,.09,.58),chrome,sx,.40,.82,0,sx>0?-.2:.2);
+    // Vortex — гладкий electric-нос и светящиеся боковые лезвия.
+    put(box(1.42,.045,.24),carbon,0,.20,2.19);
+    for(const sx of[-.82,.82])put(box(.055,.06,.48),light,sx,.45,.95,0,sx>0?-.16:.16);
   }else if(variant===2){
-    // Baron — длинный капот и хромированная решётка muscle car.
-    put(box(1.05,.14,.82),m.bodyMat,0,.71,.66);
-    put(box(1.08,.10,.045),chrome,0,.61,2.29);
-    for(const sx of[-.30,.30]){
-      const e=put(new THREE.CylinderGeometry(.055,.055,.12,10),chrome,sx,.31,-2.35);
-      e.rotation.x=Math.PI/2;
-    }
+    // Baron — современное GT-купе с длинными аэродинамическими плечами.
+    put(box(1.18,.045,.48),carbon,0,.37,-1.82);
+    for(const sx of[-.72,.72])put(box(.06,.10,.86),carbon,sx,.49,.15,0,sx>0?-.14:.14);
   }else if(variant===3){
-    // Ghost — закрытая раллийная кабина и высокий спойлер.
-    put(box(1.08,.34,.78),glass,0,.91,-.32);
-    put(box(1.42,.08,.15),carbon,0,1.13,-1.74);
-    for(const sx of[-.52,.52])put(box(.07,.30,.07),carbon,sx,.94,-1.74);
+    // Ghost — раллийное купе с гладким большим спойлером, без «коробки».
+    canopy.scale.set(.68,.27,.84);
+    put(box(1.42,.06,.12),carbon,0,1.08,-1.76);
+    for(const sx of[-.52,.52])put(box(.055,.25,.05),carbon,sx,.91,-1.76);
+    put(box(.24,.08,.34),carbon,0,1.13,.15,-.18);
   }else{
-    // Titan — защитные бамперы и широкое антикрыло.
-    put(box(1.58,.18,.18),carbon,0,.42,-2.28);
-    put(box(1.58,.08,.16),carbon,0,.93,-1.72);
-    for(const sx of[-.70,.70])put(box(.13,.30,.18),carbon,sx,.60,-1.88);
+    // Titan — широкий гиперкар с карбоновыми aero-углами.
+    put(box(1.58,.07,.16),carbon,0,.27,2.17);
+    put(box(1.55,.055,.12),carbon,0,1.00,-1.77);
+    for(const sx of[-.72,.72])put(box(.10,.15,.42),carbon,sx,.48,-1.82);
   }
   const casters=[];
   grp.traverse(o=>{if(o.isMesh){o.castShadow=true;casters.push(o);}});
