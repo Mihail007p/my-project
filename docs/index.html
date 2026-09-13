@@ -928,6 +928,188 @@ function buildWorld(){
       scene.add(c);
     }
   }
+
+  /* ================================================================
+     РЕАЛИСТИЧНЫЙ СМЕШАННЫЙ МАРШРУТ — город, поля, лес, горы, тоннель.
+     Здесь только окружение: Car, соперники и физика трассы не меняются.
+     Повторяющиеся объекты сделаны InstancedMesh, чтобы не вернуть лаги на
+     Tecno Pova Neo 3.
+     ================================================================ */
+  {
+    const idxAt=s=>Math.round((s%track.L+track.L)%track.L/track.segLen)%track.N;
+    const pose=(i,lat=0,along=0,y=0)=>{
+      const p=track.pts[i],d=track.dirs[i],r=track.rights[i];
+      return new THREE.Vector3(p.x+r.x*lat+d.x*along,y,p.z+r.z*lat+d.z*along);
+    };
+    const yawAt=i=>Math.atan2(track.dirs[i].x,track.dirs[i].z);
+    const boxAt=(i,lat,y,w,h,l,mat,along=0)=>{
+      const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,l),mat);
+      o.position.copy(pose(i,lat,along,y));o.rotation.y=yawAt(i);o.castShadow=true;scene.add(o);return o;
+    };
+    const concrete=new THREE.MeshStandardMaterial({color:0x87909a,roughness:.86,metalness:.08});
+    const railMat=new THREE.MeshStandardMaterial({color:0x9da5aa,roughness:.42,metalness:.78});
+    const postMat=new THREE.MeshStandardMaterial({color:0x697279,roughness:.64,metalness:.55});
+    const gravelMat=new THREE.MeshStandardMaterial({color:0x7b756b,roughness:1,metalness:0});
+    const dirtMat=new THREE.MeshStandardMaterial({color:0x756246,roughness:1,metalness:0});
+
+    /* реальные обочины вместо пустой границы асфальта */
+    const shoulderL=new THREE.Mesh(ribbonGeo(-8.25,-7.0,.006,.006,24),gravelMat);
+    const shoulderR=new THREE.Mesh(ribbonGeo(7.0,8.25,.006,.006,24),gravelMat);
+    shoulderL.receiveShadow=shoulderR.receiveShadow=true;scene.add(shoulderL,shoulderR);
+
+    /* металлические отбойники: старую высокую стену прячем, оставляем рельсы */
+    wl.visible=wr.visible=false;
+    const railG=new THREE.BoxGeometry(.13,.14,track.segLen*6.2);
+    const postG=new THREE.BoxGeometry(.14,.92,.14);
+    const railCount=Math.ceil(track.N/6),postCount=Math.ceil(track.N/12);
+    for(const side of[-1,1]){
+      const rails=new THREE.InstancedMesh(railG,railMat,railCount);
+      const posts=new THREE.InstancedMesh(postG,postMat,postCount);
+      const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),S=new THREE.Vector3(1,1,1),E=new THREE.Euler();
+      for(let n=0;n<railCount;n++){
+        const i=(n*6)%track.N;Q.setFromEuler(E.set(0,yawAt(i),0));
+        M.compose(pose(i,side*7.62,0,.93),Q,S);rails.setMatrixAt(n,M);
+      }
+      for(let n=0;n<postCount;n++){
+        const i=(n*12)%track.N;Q.setFromEuler(E.set(0,yawAt(i),0));
+        M.compose(pose(i,side*7.62,0,.46),Q,S);posts.setMatrixAt(n,M);
+      }
+      rails.instanceMatrix.needsUpdate=posts.instanceMatrix.needsUpdate=true;
+      rails.castShadow=posts.castShadow=true;scene.add(rails,posts);
+    }
+
+    /* дорожный знак с настоящей табличкой, а не цветной куб */
+    const signTexture=(label,bg,fg='#f5f1df')=>{
+      const c=makeCanvas(256,112),x=c.getContext('2d');
+      x.fillStyle=bg;x.fillRect(0,0,256,112);
+      x.strokeStyle='#f2ead5';x.lineWidth=5;x.strokeRect(4,4,248,104);
+      x.fillStyle=fg;x.font='900 34px Arial';x.textAlign='center';x.textBaseline='middle';
+      x.fillText(label,128,57);
+      const t=new THREE.CanvasTexture(c);t.anisotropy=2;return t;
+    };
+    const addSign=(i,side,label,bg='#1e4963')=>{
+      const lat=side*6.72;
+      const pole=new THREE.Mesh(new THREE.CylinderGeometry(.055,.075,2.25,6),postMat);
+      pole.position.copy(pose(i,lat,0,1.12));pole.castShadow=true;scene.add(pole);
+      const board=new THREE.Mesh(new THREE.PlaneGeometry(2.15,.94),
+        new THREE.MeshBasicMaterial({map:signTexture(label,bg),side:THREE.DoubleSide}));
+      board.position.copy(pose(i,lat,0,2.35));board.rotation.y=yawAt(i);scene.add(board);
+    };
+    addSign(idxAt(115),-1,'M-55','#1c5b45');
+    addSign(idxAt(360),1,'100 m','#d4a11e','#171717');
+    addSign(idxAt(620),-1,'RIVER','#1c5b8a');
+    addSign(idxAt(1040),1,'FOREST','#2d6a43');
+    addSign(idxAt(1510),-1,'PASS','#555b61');
+    addSign(idxAt(1710),1,'TUNNEL','#3d4650');
+    addSign(idxAt(2240),-1,'FINISH','#b33a24');
+
+    /* городская часть: здания не стоят геометрической стеной, а образуют кварталы */
+    {
+      const facade=texWindows();
+      const mats=[
+        new THREE.MeshStandardMaterial({map:facade,color:0xd5d0c5,roughness:.82}),
+        new THREE.MeshStandardMaterial({map:facade,color:0x9da9b4,roughness:.82}),
+        new THREE.MeshStandardMaterial({map:facade,color:0xbca88e,roughness:.9})
+      ];
+      for(let n=0;n<15;n++){
+        const i=idxAt(80+n*27),side=n%2?1:-1,dist=22+(n%3)*8;
+        const w=10+(n%4)*3,h=10+(n%5)*5,dep=9+(n%3)*4;
+        const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,dep),mats[n%3]);
+        b.position.copy(pose(i,side*dist,rand(-5,5),h/2));
+        b.rotation.y=yawAt(i)+rand(-.12,.12);b.castShadow=true;scene.add(b);
+        if(n%3===0){
+          const roof=new THREE.Mesh(new THREE.BoxGeometry(w+.35,.22,dep+.35),concrete);
+          roof.position.copy(pose(i,side*dist,rand(-5,5),h+.12));roof.rotation.y=b.rotation.y;scene.add(roof);
+        }
+      }
+      /* парковка у города */
+      const parking=new THREE.Mesh(new THREE.PlaneGeometry(42,25),
+        new THREE.MeshStandardMaterial({color:0x34383b,roughness:.96}));
+      const pi=idxAt(250);parking.rotation.x=-Math.PI/2;parking.position.copy(pose(pi,-30,0,.012));
+      parking.rotation.z=-yawAt(pi);scene.add(parking);
+    }
+
+    /* деревенский участок: поле, фермерский забор и вода */
+    {
+      const fenceCount=34,fg=new THREE.BoxGeometry(.14,1.05,.14),rg=new THREE.BoxGeometry(.10,.10,15);
+      const fences=[],fenceRails=[];
+      for(const side of[-1,1]){
+        const posts=new THREE.InstancedMesh(fg,postMat,fenceCount);
+        const rails=new THREE.InstancedMesh(rg,dirtMat,fenceCount-1);
+        const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),S=new THREE.Vector3(1,1,1),E=new THREE.Euler();
+        for(let n=0;n<fenceCount;n++){
+          const i=idxAt(470+n*14),lat=side*(15+(n%2)*2);Q.setFromEuler(E.set(0,yawAt(i),0));
+          M.compose(pose(i,lat,0,.53),Q,S);posts.setMatrixAt(n,M);
+          if(n<fenceCount-1)M.compose(pose(i,lat,0,1.0),Q,S),rails.setMatrixAt(n,M);
+        }
+        posts.instanceMatrix.needsUpdate=rails.instanceMatrix.needsUpdate=true;
+        fences.push(posts);fenceRails.push(rails);scene.add(posts,rails);
+      }
+      /* узкая река видна между дорогой и полем */
+      const water=new THREE.Mesh(new THREE.PlaneGeometry(150,82),
+        new THREE.MeshStandardMaterial({color:0x3f88a0,roughness:.18,metalness:.3,transparent:true,opacity:.88}));
+      const wi=idxAt(700);water.rotation.x=-Math.PI/2;water.rotation.z=-yawAt(wi);
+      water.position.copy(pose(wi,-48,0,.012));scene.add(water);
+      /* опоры моста остаются под трассой — дорога визуально пересекает реку */
+      for(const along of[-16,0,16])for(const lat of[-5.4,5.4])
+        boxAt(wi,lat,-1.3,1.0,2.6,1.0,concrete,along);
+    }
+
+    /* хвойный лес: инстансированные ели с разной высотой */
+    {
+      const count=92,trunkG=new THREE.CylinderGeometry(.16,.25,2.4,6),pineG=new THREE.ConeGeometry(1,3.7,7);
+      const trunkM=new THREE.MeshStandardMaterial({color:0x5c4330,roughness:1});
+      const pineM=new THREE.MeshStandardMaterial({color:0x31553b,roughness:1,flatShading:true});
+      const trunks=new THREE.InstancedMesh(trunkG,trunkM,count),pines=new THREE.InstancedMesh(pineG,pineM,count);
+      const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),E=new THREE.Euler();
+      for(let n=0;n<count;n++){
+        const s=900+(n*37)%570,i=idxAt(s),side=n%2?1:-1,lat=side*(14+(n%7)*3),sc=.75+(n%5)*.16;
+        Q.setFromEuler(E.set(0,(n*.71)%TAU,0));
+        M.compose(pose(i,lat,0,1.2*sc),Q,new THREE.Vector3(sc,sc,sc));trunks.setMatrixAt(n,M);
+        M.compose(pose(i,lat,0,3.15*sc),Q,new THREE.Vector3(sc*1.15,sc*1.18,sc*1.15));pines.setMatrixAt(n,M);
+      }
+      trunks.instanceMatrix.needsUpdate=pines.instanceMatrix.needsUpdate=true;
+      trunks.castShadow=pines.castShadow=true;scene.add(trunks,pines);
+    }
+
+    /* горный участок: скальные глыбы и бетонный тоннель */
+    {
+      const rockG=new THREE.DodecahedronGeometry(1,0),rockM=new THREE.MeshStandardMaterial({color:0x62686a,roughness:1,flatShading:true});
+      const rocks=new THREE.InstancedMesh(rockG,rockM,44),M=new THREE.Matrix4(),Q=new THREE.Quaternion(),E=new THREE.Euler();
+      for(let n=0;n<44;n++){
+        const i=idxAt(1460+(n*31)%650),side=n%2?1:-1,lat=side*(11+(n%8)*3),sc=1.2+(n%6)*.45;
+        Q.setFromEuler(E.set(rand(-.2,.2),rand(0,TAU),rand(-.2,.2)));
+        M.compose(pose(i,lat,0,sc*.52),Q,new THREE.Vector3(sc*1.7,sc,sc*1.2));rocks.setMatrixAt(n,M);
+      }
+      rocks.instanceMatrix.needsUpdate=true;rocks.castShadow=true;scene.add(rocks);
+      const ti=idxAt(1660),portalMat=new THREE.MeshStandardMaterial({color:0x6e7477,roughness:.92,metalness:.05});
+      boxAt(ti,-7.65,2.35,.95,4.7,1.0,portalMat);
+      boxAt(ti,7.65,2.35,.95,4.7,1.0,portalMat);
+      boxAt(ti,0,4.7,16.3,.95,1.0,portalMat);
+      const dark=new THREE.Mesh(new THREE.PlaneGeometry(14.8,4.2),new THREE.MeshBasicMaterial({color:0x15191d,side:THREE.DoubleSide}));
+      dark.position.copy(pose(ti,0,2.0,2.25));dark.rotation.y=yawAt(ti);scene.add(dark);
+      for(const along of[-9,0,9]){
+        const lamp=new THREE.Mesh(new THREE.BoxGeometry(.5,.12,.22),new THREE.MeshBasicMaterial({color:0xffd88a}));
+        lamp.position.copy(pose(ti,0,along,4.1));lamp.rotation.y=yawAt(ti);scene.add(lamp);
+      }
+      /* шевроны перед серпантином */
+      for(let n=0;n<4;n++)addSign(idxAt(1500+n*10),n%2?1:-1,'›','#d17a1e','#171717');
+    }
+
+    /* дистанционные столбики вдоль смешанных участков */
+    {
+      const count=Math.ceil(track.N/18),postG=new THREE.BoxGeometry(.11,.72,.11),capG=new THREE.BoxGeometry(.16,.09,.13);
+      const pmat=new THREE.MeshStandardMaterial({color:0xf0eee5,roughness:.8}),red=new THREE.MeshStandardMaterial({color:0xb83e35,roughness:.65});
+      const posts=new THREE.InstancedMesh(postG,pmat,count),caps=new THREE.InstancedMesh(capG,red,count);
+      const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),S=new THREE.Vector3(1,1,1),E=new THREE.Euler();
+      for(let n=0;n<count;n++){
+        const i=(n*18)%track.N,side=n%2?1:-1;Q.setFromEuler(E.set(0,yawAt(i),0));
+        M.compose(pose(i,side*6.35,0,.36),Q,S);posts.setMatrixAt(n,M);
+        M.compose(pose(i,side*6.35,0,.69),Q,S);caps.setMatrixAt(n,M);
+      }
+      posts.instanceMatrix.needsUpdate=caps.instanceMatrix.needsUpdate=true;scene.add(posts,caps);
+    }
+  }
 }
 
 /* ================================================================
