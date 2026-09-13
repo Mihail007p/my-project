@@ -286,12 +286,12 @@ function carAssertions(G,sandbox,label){
     label+': стоп-сигналы у каждой машины свои (общий шаблон не перекрашивается)');
   const colors=new Set(cars.map(c=>c.bodyMat.color.getHexString()));
   ok(colors.size>=5,label+': цвета машин различаются ('+colors.size+' из 6)');
-  const spriteInfo=G.perfInfo();
-  ok(spriteInfo.sprites===true,label+': AI-атлас спрайтов загружен');
-  ok(spriteInfo.cars.filter(c=>c.ai).every(c=>c.sprite===true),
-    label+': все соперники используют разные AI-спрайты');
-  ok(G.cars.filter(c=>c.isAI).every(c=>c.mesh.position.y>1.2&&c.mesh.position.y<2.0),
-    label+': нижняя граница каждого спрайта выставлена на уровень дороги');
+  const rivalInfo=G.perfInfo();
+  ok(rivalInfo.rival3D===true,label+': AI-соперники используют лёгкие 3D-машины');
+  ok(rivalInfo.cars.filter(c=>c.ai).every(c=>c.rival3D===true&&!c.sprite),
+    label+': все соперники имеют собственные 3D-варианты, а не плоские картинки');
+  ok(G.cars.filter(c=>c.isAI).every(c=>Math.abs(c.mesh.position.y)<0.001),
+    label+': 3D-соперники стоят колёсами на уровне дороги');
   ok(G.player.bodyMat.color.getHexString()==='d41818',
     label+': цвет игрока = выбранному в меню ('+G.player.bodyMat.color.getHexString()+')');
 
@@ -439,7 +439,7 @@ async function raceCheck(G,label){
   const pi0=PG.perfInfo();
   ok(pi0.touch===true,'телефон распознан как touch-устройство');
   ok(pi0.lightAI===true,'на телефоне соперники переводятся на лёгкие меши');
-  ok(pi0.cars.filter(c=>c.ai).every(c=>!c.gltf),'все 5 соперников — лёгкие представления (спрайты или fallback)');
+  ok(pi0.cars.filter(c=>c.ai).every(c=>c.rival3D===true&&!c.gltf),'все 5 соперников — лёгкие 3D-варианты');
   ok(pi0.cars.find(c=>!c.ai).gltf===true,'машина игрока — настоящая Ferrari');
   ok(pi0.dpr<=1.0,'DPR телефона ограничен 1.0: '+pi0.dpr);
   ok(pi0.shadows===true,'тени на старте включены');

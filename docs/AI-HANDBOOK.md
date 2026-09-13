@@ -105,16 +105,16 @@ commit → push в ветку сессии → ссылка пользовате
   (loft-кузов `loftHull(stations)` + кокпит + свет + колёса, ~1.9 тыс. треуг.);
   `buildGltfCar(colorHex,isPlayer)` — клон нормализованного шаблона
   `assets.carTemplate` со СВОИМИ материалами (кузов/стёкла/фонари), иначе
-  перекраска одной машины красит все. `buildOpponentSprite(index,colorHex)` —
-  текстурированная плоскость из `assets/opponents/opponent-sprites.png`,
-  повернутая по heading машины; у каждого AI свой столбец, а ряд переключается
-  между задним и передним ракурсом относительно камеры.
+  перекраска одной машины красит все. `buildOpponentCarMesh(colorHex,variant)` —
+  лёгкий 3D-вариант для каждого AI: свои пропорции, антикрыло, капот, кабина
+  или защитный обвес. Все варианты остаются полноценными объектами Car, а не
+  плоскими картинками, поэтому повторяют поворот, крен, колёса и физику игрока.
 - **Контракт меша машины** (полагаются Car и тесты):
   `{grp, wheels:[{wg,spin,front}], bodyMat, tailLights, casters, gltf}`.
-  Для AI-спрайта `wheels` пуст, `gltf:false`, добавляется `sprite:true`, но
-  `bodyMat`/`tailLights` остаются уникальными. Стоп-сигналы: материал с
-  `emissive===0xff1e1e` (у запасной ищется traverse-ом). Колёса крутятся через
-  `spin.rotation.x`, поворот через `wg.rotation.y`.
+  Для AI `gltf:false`, добавляется `rival3D:true`, колёса и материалы свои.
+  Стоп-сигналы: материал с `emissive===0xff1e1e` (у запасной ищется
+  traverse-ом). Колёса крутятся через `spin.rotation.x`, поворот через
+  `wg.rotation.y`.
 
 - **Модель:** загрузка в блоке ассетов: `MODEL_URL='assets/ferrari.glb'`,
   DRACOLoader из `assets/draco/`; `normalize(src)` — нос в +Z, длина 4.55 м,
@@ -126,9 +126,8 @@ commit → push в ветку сессии → ссылка пользовате
 - **Производительность:** `TOUCH` (maxTouchPoints/pointer:coarse), `PERF`
   {lightAI,lvl,dprScale,...}, `DPR_CAP` (touch 1.0 / десктоп 2), `perfTick(dt)`
   в `tick()` — губернер FPS (ступени: ×0.75 DPR → ×0.6 DPR + тени off;
-  вверх при стабильных >55 FPS). Соперники после загрузки используют лёгкие
-  AI-спрайты, при ошибке загрузки атласа остаётся `buildCarMesh`; игрок — GLTF.
-  Тени ИИ: `updateCarShadows`
+  вверх при стабильных >55 FPS). Соперники используют лёгкие 3D-варианты
+  `buildOpponentCarMesh`, игрок — GLTF Ferrari. Тени ИИ: `updateCarShadows`
   (включаются в радиусе 90 м от якоря).
 - **Хуки тестов:** `window.__game` = {start, update, cars, track, game, input,
   assets, tryStart, carInfo(), perfInfo(), _perfTick, get player, tick(dt)}.

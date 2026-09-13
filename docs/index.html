@@ -226,7 +226,6 @@
 <script src="lib/three.min.js"></script>
 <script src="assets/GLTFLoader.js"></script>
 <script src="assets/DRACOLoader.js"></script>
-<script src="assets/opponents/sprite-data.js"></script>
 <script>
   /* резерв: если локальный движок не загрузился — тянем с CDN напрямую в браузер */
   if(typeof THREE==='undefined'){
@@ -469,99 +468,6 @@ function buildGltfCar(colorHex,isPlayer){
   return {grp:outer,wheels,bodyMat,tailLights:tailMat,casters,gltf:true};
 }
 
-/* ---------------- СПРАЙТЫ СОПЕРНИКОВ ----------------
-   Пять соперников получили собственные AI-рендеры: в атласе есть вид сзади
-   и спереди для каждого. Текстурированная плоскость остаётся очень дешёвой
-   а игрок продолжает ехать на настоящей Ferrari 458. Пока PNG ещё грузится,
-   используется прежний процедурный меш — гонка не ждёт картинку. */
-let opponentAtlas=null;
-function spriteTexture(index){
-  const t=opponentAtlas.clone();
-  t.needsUpdate=true;
-  t.repeat.set(1/OPPONENT_SPRITES.columns,1/OPPONENT_SPRITES.rows);
-  t.offset.set((index%OPPONENT_SPRITES.columns)/OPPONENT_SPRITES.columns,
-    1-(Math.floor(index/OPPONENT_SPRITES.columns)+1)/OPPONENT_SPRITES.rows);
-  t.minFilter=THREE.LinearFilter;t.magFilter=THREE.LinearFilter;
-  return t;
-}
-function spriteGroundY(index){
-  const bottom=(OPPONENT_SPRITES.bottoms&&OPPONENT_SPRITES.bottoms[index])||229;
-  // Sprite origin is in the centre of the 256×256 cell. Поднимаем ровно на
-  // высоту прозрачного поля, чтобы нижние пиксели машины стояли на дороге.
-  return 4.7*(bottom/OPPONENT_SPRITES.cellSize-.5);
-}
-function setOpponentSpriteAngle(c){
-  if(!c.isSprite||!camera||!c.mesh.material.map)return;
-  const fx=Math.sin(c.heading),fz=Math.cos(c.heading);
-  const dx=camera.position.x-c.pos.x,dz=camera.position.z-c.pos.z;
-  const front=dx*fx+dz*fz>0.4;
-  const row=front?1:0;
-  const col=c.spriteIndex%OPPONENT_SPRITES.columns;
-  const atlasIndex=(row?OPPONENT_SPRITES.front[col]:OPPONENT_SPRITES.rear[col]);
-  if(c.spriteRow===row){
-    c.mesh.position.y=spriteGroundY(atlasIndex);
-    c.mesh.rotation.y=c.heading+(row?0:Math.PI);
-    return;
-  }
-  c.spriteRow=row;
-  const t=c.mesh.material.map;
-  t.offset.set((atlasIndex%OPPONENT_SPRITES.columns)/OPPONENT_SPRITES.columns,
-    1-(Math.floor(atlasIndex/OPPONENT_SPRITES.columns)+1)/OPPONENT_SPRITES.rows);
-  c.mesh.position.y=spriteGroundY(atlasIndex);
-  c.mesh.rotation.y=c.heading+(row?0:Math.PI);
-  t.needsUpdate=true;
-}
-function buildOpponentSprite(spriteIndex,colorHex){
-  const col=spriteIndex%OPPONENT_SPRITES.columns;
-  const atlasIndex=OPPONENT_SPRITES.rear[col];
-  const mat=new THREE.MeshBasicMaterial({map:spriteTexture(atlasIndex),color:colorHex,
-    transparent:true,alphaTest:.03,depthWrite:true,fog:true,side:THREE.DoubleSide});
-  // Это вертикальная плоскость, а не camera-facing Sprite: она поворачивается
-  // вместе с машиной и поэтому не выглядит наклейкой поперёк трассы.
-  const sprite=new THREE.Mesh(new THREE.PlaneGeometry(1,1),mat);
-  sprite.scale.set(4.7,4.7,1);
-  sprite.position.y=spriteGroundY(atlasIndex);
-  // У спрайта нет физических стоп-сигналов, но этот объект сохраняет общий
-  // контракт Car и позволяет HUD/торможению управлять яркостью без ошибок.
-  return {grp:sprite,wheels:[],bodyMat:mat,
-    tailLights:{emissiveIntensity:.45},casters:[],gltf:false,sprite:true};
-}
-function disposeOpponentSprite(c){
-  if(!c||!c.isSprite||!c.mesh)return;
-  const mat=c.mesh.material;
-  if(c.mesh.geometry&&c.mesh.geometry.dispose)c.mesh.geometry.dispose();
-  if(mat&&mat.map&&mat.map!==opponentAtlas)mat.map.dispose();
-  if(mat&&mat.dispose)mat.dispose();
-}
-function replaceOpponentMeshesWithSprites(){
-  if(!opponentAtlas||!scene)return;
-  for(const c of cars){
-    if(!c.isAI||c.isSprite)continue;
-    scene.remove(c.mesh);disposeOpponentSprite(c);
-    const old=c.mesh;
-    if(!c.isGltf)disposeCarMesh(c);
-    const m=buildOpponentSprite(c.spriteIndex,c.colorHex);
-    c.mesh=m.grp;c.wheels=m.wheels;c.bodyMat=m.bodyMat;c.tailLights=m.tailLights;
-    c.casters=m.casters;c.isGltf=false;c.isSprite=true;c.spriteRow=0;
-    scene.add(c.mesh);c.syncMesh();
-  }
-}
-function loadOpponentSpriteAtlas(){
-  if(!window.THREE||!THREE.TextureLoader||typeof OPPONENT_SPRITES==='undefined'||
-     !document.createElementNS)return;
-  try{
-    const loader=new THREE.TextureLoader();
-    loader.load(OPPONENT_SPRITES.url,tex=>{
-      opponentAtlas=tex;
-      if('encoding' in opponentAtlas&&THREE.sRGBEncoding)opponentAtlas.encoding=THREE.sRGBEncoding;
-      replaceOpponentMeshesWithSprites();
-      console.log('AI-спрайты соперников загружены: 5 машин × 2 ракурса ✓');
-    },undefined,err=>console.warn('AI-спрайты не загрузились — процедурный fallback:',err));
-  }catch(err){
-    console.warn('AI-спрайты не загрузились — процедурный fallback:',err);
-  }
-}
-
 /* ---------------- СОСТОЯНИЕ ---------------- */
 const game={
   state:'loading', paused:false, raceTime:0, countdownT:0, camMode:0, muted:false,
@@ -574,9 +480,8 @@ let renderer,scene,camera,sunLight,hemiLight;
 const clock={last:0};
 /* Слабые телефоны (Mali-G52 и ниже): 6 машин по 359 тыс. треугольников + тени
    + DPR 1.5 съедают все кадры в секунду. На touch-экранах: без MSAA, DPR 1.0,
-   AI-спрайты вместо тяжёлых моделей (герой игрока — настоящая Ferrari).
-   Если PNG ещё грузится, временно работает лёгкий процедурный fallback.
-   Дальше качество доводит губернер по FPS (perfTick). */
+   лёгкие низкополигональные 3D-соперники вместо тяжёлых GLTF (герой игрока —
+   настоящая Ferrari). Дальше качество доводит губернер по FPS (perfTick). */
 const TOUCH=(navigator.maxTouchPoints>0||matchMedia('(pointer: coarse)').matches);
 const PERF={lightAI:TOUCH,lvl:0,dprScale:1,acc:0,n:0,bad:0,good:0};
 const DPR_CAP=TOUCH?1.0:2;
@@ -1120,18 +1025,75 @@ function buildCarMesh(colorHex,isPlayer){
     grp.add(wg);
     wheels.push({wg,spin,front:!!front});
   }
-  return {grp,wheels,bodyMat,tailM:null};
+  return {grp,wheels,bodyMat,tailLights:tailMat,casters:null,gltf:false};
+}
+
+/* ---------------- 3D-СОПЕРНИКИ ----------------
+   У всех AI та же физика Car, что у игрока, но лёгкие низкополигональные
+   кузова с разными пропорциями и деталями. Это не плоские картинки: машины
+   поворачиваются, кренятся, крутят колёса и стоят на дороге как игрок. */
+function buildOpponentCarMesh(colorHex,variant){
+  const m=buildCarMesh(colorHex,false);
+  const grp=m.grp;
+  const carbon=new THREE.MeshStandardMaterial({color:0x0d1014,metalness:.55,roughness:.42});
+  const glass=new THREE.MeshStandardMaterial({color:0x101725,metalness:.8,roughness:.12,
+    transparent:true,opacity:.88});
+  const chrome=new THREE.MeshStandardMaterial({color:0xbcc4ce,metalness:1,roughness:.22});
+  const put=(g,mat,x,y,z,rx=0,ry=0,rz=0)=>{
+    const o=new THREE.Mesh(g,mat);o.position.set(x,y,z);o.rotation.set(rx,ry,rz);
+    o.castShadow=true;grp.add(o);return o;
+  };
+  const box=(x,y,z)=>new THREE.BoxGeometry(x,y,z);
+  const shape=[
+    [1.06,.88,1.04], // Falcon — низкий широкий суперкар
+    [.99,.84,1.08],  // Vortex — клиновидный electric
+    [1.10,1.00,1.02],// Baron — длинный muscle coupe
+    [.94,1.12,1.00], // Ghost — высокий раллийный hatchback
+    [1.12,.94,1.04]  // Titan — широкий бронированный трек-кар
+  ][variant%5];
+  grp.scale.set(shape[0],shape[1],shape[2]);
+
+  if(variant===0){
+    // Большое антикрыло Falcon.
+    put(box(1.48,.07,.16),carbon,0,1.00,-1.78);
+    for(const sx of[-.56,.56])put(box(.07,.34,.07),carbon,sx,.84,-1.78);
+  }else if(variant===1){
+    // Vortex получает светлый носовой сплиттер и боковые лезвия.
+    put(box(1.48,.055,.30),chrome,0,.21,2.18);
+    for(const sx of[-.94,.94])put(box(.08,.09,.58),chrome,sx,.40,.82,0,sx>0?-.2:.2);
+  }else if(variant===2){
+    // Baron — длинный капот и хромированная решётка muscle car.
+    put(box(1.05,.14,.82),m.bodyMat,0,.71,.66);
+    put(box(1.08,.10,.045),chrome,0,.61,2.29);
+    for(const sx of[-.30,.30]){
+      const e=put(new THREE.CylinderGeometry(.055,.055,.12,10),chrome,sx,.31,-2.35);
+      e.rotation.x=Math.PI/2;
+    }
+  }else if(variant===3){
+    // Ghost — закрытая раллийная кабина и высокий спойлер.
+    put(box(1.08,.34,.78),glass,0,.91,-.32);
+    put(box(1.42,.08,.15),carbon,0,1.13,-1.74);
+    for(const sx of[-.52,.52])put(box(.07,.30,.07),carbon,sx,.94,-1.74);
+  }else{
+    // Titan — защитные бамперы и широкое антикрыло.
+    put(box(1.58,.18,.18),carbon,0,.42,-2.28);
+    put(box(1.58,.08,.16),carbon,0,.93,-1.72);
+    for(const sx of[-.70,.70])put(box(.13,.30,.18),carbon,sx,.60,-1.88);
+  }
+  const casters=[];
+  grp.traverse(o=>{if(o.isMesh){o.castShadow=true;casters.push(o);}});
+  return {grp,wheels:m.wheels,bodyMat:m.bodyMat,tailLights:m.tailLights,
+    casters,gltf:false,rival3D:true};
 }
 
 /* ---------------- КЛАСС МАШИНЫ ---------------- */
 class Car{
   constructor(name,colorHex,isAI,gridSlot){
     this.name=name; this.isAI=isAI; this.colorHex=colorHex; this.spriteIndex=gridSlot;
-    const gltf=assets.ready&&!(isAI&&PERF.lightAI);
-    const m=(isAI&&opponentAtlas)?buildOpponentSprite(gridSlot,colorHex):
-      (gltf?buildGltfCar(colorHex,isAI?false:true):buildCarMesh(colorHex,isAI?false:true));
+    const m=isAI?buildOpponentCarMesh(colorHex,gridSlot):
+      (assets.ready?buildGltfCar(colorHex,true):buildCarMesh(colorHex,true));
     this.mesh=m.grp; this.wheels=m.wheels; this.bodyMat=m.bodyMat;
-    this.isGltf=!!m.gltf; this.isSprite=!!m.sprite;
+    this.isGltf=!!m.gltf; this.isSprite=!!m.sprite; this.isRival3D=!!m.rival3D;
     this.casters=m.casters||null; this.shadowOn=true;
     // материал стоп-сигналов: у 3D-модели он свой, у запасной машины ищем по emissive
     this.tailLights=m.tailLights||null;
@@ -1332,7 +1294,6 @@ const AI_META=[
    (clone() их не копирует) — трогать нельзя, иначе пропадут все остальные машины. */
 function disposeCarMesh(c){
   if(!c||!c.mesh||c.isGltf)return;
-  if(c.isSprite){disposeOpponentSprite(c);return;}
   c.mesh.traverse(o=>{
     if(!o.isMesh)return;
     if(o.geometry)o.geometry.dispose();
@@ -1892,7 +1853,6 @@ document.addEventListener('visibilitychange',()=>{
 /* строим мир и стартуем */
 buildTrackData();
 buildWorld();
-loadOpponentSpriteAtlas();
 setupRace();
 buildMinimap();
 game.state='menu';
@@ -1915,8 +1875,8 @@ window.__game={
   get player(){return player;},
   perfInfo(){return {touch:TOUCH,lvl:PERF.lvl,dpr:renderer.getPixelRatio(),
     shadows:renderer.shadowMap.enabled,lightAI:PERF.lightAI,
-    sprites:!!opponentAtlas,
-    cars:cars.map(c=>({ai:c.isAI,gltf:c.isGltf,sprite:!!c.isSprite}))};},
+    rival3D:cars.filter(c=>c.isAI).every(c=>c.isRival3D),
+    cars:cars.map(c=>({ai:c.isAI,gltf:c.isGltf,sprite:!!c.isSprite,rival3D:!!c.isRival3D}))};},
   _perfTick:perfTick,
   tick(dt){update(dt);updateCamera(dt);updateCarShadows(dt);perfTick(dt);}
 };
