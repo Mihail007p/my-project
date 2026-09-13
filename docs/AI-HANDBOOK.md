@@ -1,0 +1,210 @@
+# Инструкция для будущих ИИ-агентов (AI-HANDBOOK)
+
+Коротко: как устроен проект, что где лежит, какие команды гонять, какие грабли
+уже собраны и какие правила нельзя нарушать. История работ — в
+`docs/AI-JOURNAL.md` (читай последнюю запись перед началом: там открытый
+бэклог). Человеческая история изменений — `CHANGELOG.md`.
+
+## 0. Правила поведения (коротко и жёстко)
+
+0. **Постоянная ссылка для пользователя.** Никогда не называть ссылку с именем
+   ветки постоянной: ветка может измениться или быть удалена. Для финальной
+   версии всегда выдавать immutable permalink с полным SHA коммита:
+   `https://raw.githack.com/Mihail007p/my-project/<FULL_COMMIT_SHA>/new-project/play.html`.
+   SHA получать командой `git rev-parse HEAD` после последнего коммита. Ссылку
+   с `arena/...` можно давать только как preview. Если пользователь просит
+   «постоянную ссылку», в ответе обязательно указывать полный SHA и дату сборки.
+
+1. **Ветка.** Текущая сессия закреплена за `arena/01a0987d-my-project`. Коммиты
+   и push — только в неё (`git push origin arena/01a0987d-my-project`), PR
+   открывать из неё. Не переключаться, не создавать и не пушить другие ветки.
+   Ветка пользователя `arena/01a09448-my-project` НЕ обновляется агентом.
+2. **`.github/workflows/*` не коммитить**: GitHub App отклоняет push
+   (нет права `workflows`). Готовые изменения CI клади в
+   `docs/ci-workflow-proposed.yml` и пиши пользователю «скопируй вручную».
+3. **Пользователь говорит по-русски** и ждёт отчётов по-русски, без
+   англоязычных простыней. Комментарии в коде — по-русски (так исторически).
+4. **Тяжёлые бинарники в git — только существующие исключения**
+   (`new-project/assets/ferrari.glb` 1.7 МБ, `new-project/play.html` ~4 МБ —
+   это и есть продукт). Новые датасеты/рендеры-простыни в git не тащить.
+5. **После блока работ**: допиши запись в `docs/AI-JOURNAL.md` (формат в конце
+   журнала), обнови `CHANGELOG.md` (keep-a-changelog), если менялось поведение.
+6. Пользователь играет с телефона по ссылкам raw.githack — после каждого пуша
+   давай ссылку с новым кэш-бастером `?v=N` (githack кэширует веточные URL).
+
+## 1. Что за проект
+
+`new-project/index.html` — гонка STREET APEX (WebGL, three.js r1xx из
+`new-project/lib/three.min.js`): замкнутая трасса 8.83 км с туннелем и городом,
+6 машин (игрок + 5 ИИ), 3 круга, дрифт, нитро, меню/пауза/финиш, сенсорное
+управление. Один большой inline-`<script>` в конце файла (~66 КБ JS).
+
+Два режима доставки:
+- `new-project/index.html` + `new-project/assets/*` + `lib/*` — разработка
+  (нужен сервер: `make serve` → http://localhost:8000);
+- `new-project/play.html` — САМОДОСТАТОЧНЫЙ файл ~4 МБ (three.js, GLTFLoader,
+  DRACOLoader, Draco-декодер, GLB-модель и арт меню зашиты внутрь). Именно он
+  открывается по ссылке raw.githack и двойным щелчком без сети.
+- `docs/` — зеркало для GitHub Pages (`make docs`).
+
+## 2. Карта репозитория
+
+| Путь | Зачем |
+|---|---|
+| `new-project/index.html` | вся игра: мир, физика, ИИ, машина, HUD, перф |
+| `new-project/play.html` | офлайн-сборка (генерируется, не править руками!) |
+| `new-project/assets/ferrari.glb` | Draco-модель Ferrari 458 (1.7 МБ) |
+| `new-project/assets/draco/*` | декодер Draco (wasm + wrapper) |
+| `new-project/assets/hero-car-v2.jpg` | арт меню и референс вида машины |
+| `new-project/assets/opponents/opponent-sprites.png` | AI-атлас: 5 разных соперников × задний/передний ракурс, RGBA |
+| `new-project/assets/opponents/opponent-animated-sprites.png` | готовый 2D-лист: 5 машин × 4 кадра руления, вид как из игры |
+| `new-project/assets/opponents/animated-sprite-data.js` | метаданные animated sprite-sheet (10 FPS, baseline 256px) |
+| `new-project/assets/opponents/sprite-data.js` | размеры и индексы старого статичного атласа |
+| `tools/generate-opponent-sprites.js` | PNG-декодер/chroma-key/crop/масштабирование AI-рендеров в атлас |
+| `new-project/lib/three.min.js`, `assets/GLTFLoader.js`, `assets/DRACOLoader.js` | рантайм |
+| `tools/build-offline.py` | сборка play.html (`make play`) |
+| `tools/sync-docs.py` | зеркало в docs/ (`make docs`) |
+| `tools/car-model-test.js` | 94 проверки: модель, гейт старта, офлайн, телефон |
+| `tools/racing-smoke-test.js` | 16 проверок: трасса, физика, ИИ, отбойник |
+| `tools/soft-render.js` | PNG-рендеры машины БЕЗ браузера (`make render`) |
+| `tools/screenshots/` | референсы и рендеры: `q-*.png` (GLTF-виды), `fallback-*.png`, `gltf-rear34.png`; `car-*.png` — ИСТОРИЯ (старый «кирпич»), не референс! |
+| `tools/world-stats.js`, `tests/world-test.js` | геометрия мира / снимки (нужен puppeteer, его нет) |
+| `docs/AI-JOURNAL.md`, `docs/AI-HANDBOOK.md` | этот журнал и эта инструкция |
+| `docs/PERMANENT-LINK.md` | обязательное правило immutable-ссылки на игру |
+| `docs/ci-workflow-proposed.yml` | предлагаемый CI (копируется вручную) |
+| `Makefile` | все команды (`make help`) |
+
+## 3. Команды
+
+```
+make help      список
+make play      собрать play.html (ОБЯЗАТЕЛЬНО после правок index.html)
+make docs      зеркалить в docs/ (после make play)
+make car       тест машины/модели/офлайна/телефона (Node-vm)
+make racing    смоук гонки
+make test      build+stats+play+racing+car (+снимки, если есть puppeteer)
+make render    софтверные PNG машины в tools/soft-render-out/
+node tools/generate-opponent-sprites.js  собрать AI-атлас из исходных PNG
+make serve     сервер разработки :8000
+```
+
+Порядок релиза после правок игры:
+`правка index.html` → `node --check` на извлечённом inline-скрипте →
+`make play` → `make docs` → `make test` → CHANGELOG + журнал →
+commit → push в ветку сессии → ссылка пользователю с `?v=N`:
+`https://raw.githack.com/Mihail007p/my-project/arena/01a0987d-my-project/new-project/play.html?v=N`
+
+Извлечение JS для `node --check`: последний блок `<script>` без `src`:
+`python3 -c "s=open('new-project/index.html').read();i=s.rindex('<script>');j=s.rindex('</script>');open('/tmp/g.js','w').write(s[i+8:j])" && node --check /tmp/g.js`
+
+## 4. Как устроена игра (точки, которые чаще всего трогают)
+
+Всё в одном inline-скрипте `new-project/index.html`:
+- `CFG`, `DIFFS`, `AI_META` — настройки, сложности, имена/цвета соперников.
+- Трасса: `track` (pts/dirs/rights/sums/N/L), генерация мира — функции выше.
+- `class Car` — физика+визуал машины; `placeOnGrid`, `syncMesh`.
+- **Машина:** `buildCarMesh(colorHex,isPlayer)` — процедурная запасная
+  (loft-кузов `loftHull(stations)` + кокпит + свет + колёса, ~1.9 тыс. треуг.);
+  `buildGltfCar(colorHex,isPlayer)` — клон нормализованного шаблона
+  `assets.carTemplate` со СВОИМИ материалами (кузов/стёкла/фонари), иначе
+  перекраска одной машины красит все. `buildMobileGltfCar(colorHex,variant)` —
+  мобильный LOD той же Ferrari с отключёнными тяжёлыми салонными мешами;
+  `buildOpponentCarMesh(colorHex,variant)` остаётся только fallback при отказе
+  загрузки. На десктопе после загрузки `buildGltfCar(colorHex,false,variant)` даёт
+  каждому AI полную качественную копию GLTF Ferrari со своими пропорциями и
+  aero-деталями. Все варианты остаются полноценными объектами Car, а не плоскими
+  картинками, поэтому повторяют поворот, крен, колёса и физику игрока.
+- **Мир:** `buildWorld()` сохраняет трассу и машины нетронутыми, но добавляет
+  смешанные зоны реального маршрута: город, поле с рекой, хвойный лес, горы,
+  скалы, тоннель, дорожные знаки, отбойники и столбики. Повторяющиеся объекты
+  используют `InstancedMesh`; при доработке мира не добавлять тяжёлые источники
+  света или тысячи отдельных Mesh.
+- **Контракт меша машины** (полагаются Car и тесты):
+  `{grp, wheels:[{wg,spin,front}], bodyMat, tailLights, casters, gltf}`.
+  После успешной загрузки desktop-AI имеет полный `gltf:true`, а mobile-AI —
+  `gltf:true,mobile:true`: это тот же кузов с отключёнными тяжёлыми салонными
+  мешами. Оба имеют `rival3D:true`, свои материалы и детали. Стоп-сигналы:
+  материал с `emissive===0xff1e1e` (у запасной ищется traverse-ом). Колёса крутятся через
+  `spin.rotation.x`, поворот через `wg.rotation.y`.
+
+- **Модель:** загрузка в блоке ассетов: `MODEL_URL='assets/ferrari.glb'`,
+  DRACOLoader из `assets/draco/`; `normalize(src)` — нос в +Z, длина 4.55 м,
+  колёса на y=0; успех → `assets.ready=true` + `modelApplied()`
+  (разблокировка старта, пересборка меню); ошибка/таймаут 20 с →
+  `modelFailed(reason)` (старт с запасной машиной, подпись в меню).
+  Гейт: `setStart(bool)`, `tryStart()`; кнопка `btnStart`, статус `modelStatus`,
+  полоса `modelBarFill`.
+- **Производительность:** `TOUCH` (maxTouchPoints/pointer:coarse), `LOW_END_TOUCH`
+  (Tecno/Pova/LH6n и устройства с <=4 ГБ или <=4 ядрами), `PERF`
+  `{lightAI,lowEnd,lvl,dprScale,...}`, `DPR_CAP` (touch 1.0 / десктоп 2),
+  `perfTick(dt)` в `tick()` — губернер FPS (ступени: на слабом телефоне
+  0.8 → 0.65 → 0.55 DPR, на остальных 1 → 0.75 → 0.6; при слабом FPS
+  отключаются тени). Touch-AI после загрузки использует `buildMobileGltfCar`
+  (тот же кузов с урезанными тяжёлыми деталями), desktop-AI использует полные
+  качественные GLTF-клоны. `buildOpponentCarMesh` остаётся только запасным
+  вариантом при ошибке загрузки. На Tecno/Pova динамические
+  тени выключены сразу, чтобы не ждать двух секунд просадки. Тени ИИ:
+  `updateCarShadows` (включаются в радиусе 90 м от якоря, если разрешены).
+- **Хуки тестов:** `window.__game` = {start, update, cars, track, game, input,
+  assets, tryStart, carInfo(), perfInfo(), _perfTick, get player, tick(dt)}.
+
+## 5. Тесты и как добавлять свои
+
+`tools/car-model-test.js`: сценарии 1–4 (гейт загрузки, успешная загрузка,
+play.html без сети и воркеров, отказ модели → запасная) + 5 (телефон: лёгкие
+соперники, DPR, губернер). Скелет: `boot(file,{loaderMode:'slow'|'ok'|'fail',
+touch:bool})` поднимает игру в `vm`-песочнице, `env.tick(ms)` крутит кадры,
+`ok(cond,'текст')` считает проверки, `section('имя')` группирует.
+
+Грабли песочницы (уже наступили, не повторяй):
+- Стаб `Path2D` обязан иметь moveTo/lineTo/closePath/arc — иначе упадёт
+  миникарта (`mmPath.moveTo is not a function`).
+- `navigator.maxTouchPoints` в стабе включает touch-режим (сценарий 5).
+- Стаб `WebGLRenderer.setPixelRatio` должен запоминать значение, иначе
+  `getPixelRatio()` врёт и проверки DPR падают.
+- Габариты машины мерить, обнулив `mesh.position/rotation` и вызвав
+  `updateMatrixWorld(true)`: в Node никто не крутит рендер-цикл, дети держат
+  несвежие `matrixWorld` → бокс врёт (было 5.00×2.83 вместо 4.68×1.92).
+- `make test` без puppeteer пропускает снимки мира — это НОРМА, не чини.
+- Headless-браузера в песочнице НЕТ совсем: визуальные проверки только через
+  `make render` (софтверный растр) или глазами пользователя.
+
+Пропорции запасной машины закрыты проверками: L 4.3–4.9, W 1.7–2.1,
+H 0.9–1.25, min.y≈0, ≥25 мешей, стоп-сигналы подключены. Ломаешь силуэт —
+увидишь красным.
+
+## 6. Визуальная проверка машины без браузера
+
+```
+make render            # → tools/soft-render-out/*.png
+```
+Рисует запасную машину (режим отказа модели) в 3 ракурсах и GLTF-модель для
+сравнения. AI-атлас проверяется отдельно открытием
+`new-project/assets/opponents/opponent-sprites.png`: прозрачный фон, 5 колонок
+сзади и 5 спереди. Сравнивай с `tools/screenshots/q-rear34.png`, `q-side.png` и
+`new-project/assets/hero-car-v2.jpg` (низкий открытый Spider: клин-нос,
+наклонное стекло, кабина с сиденьями, круглые фонари, пятилучевые диски с
+жёлтыми суппортами, БЕЗ антикрыла). После правок кузова прогони `make car`.
+
+## 7. Известные мертвые концовки и внешние ограничения
+
+- `curl` на `raw.githack.com` / `raw.githubusercontent.com` из песочницы
+  падает (SSL_ERROR_SYSCALL). Проверять ссылки только инструментом
+  fetch_page или просить пользователя.
+- githack кэширует веточные URL: после пуша пользователь должен открыть ссылку
+  с новым `?v=N`, иначе увидит старую сборку и решит, что «не починили».
+- puppeteer/Chrome в песочнице нет и не ставь — время уйдёт впустую.
+- Push с `.github/workflows/*` отклоняется сервером (право `workflows`).
+- Draco в офлайн-сборке работает в основном потоке с эмуляцией воркер-окружения
+  (иначе emscripten подменяет `console.log` на `window.print`); не «упрощай».
+- `tools/build-offline.py` обязан падать громко, если подстановка не прошла —
+  не возвращай молчаливые assert'ы.
+
+## 8. Бэклог (из последней записи журнала)
+
+- CI скопировать вручную: `cp docs/ci-workflow-proposed.yml .github/workflows/ci.yml`
+  (может только пользователь).
+- Если Pova neo 3 всё ещё лагает: лёгкая машина игрока на touch / лок 30 FPS /
+  тени только у игрока.
+- `tools/screenshots/car-*.png` — исторические рендеры старого «кирпича».
+- Fast-forward ветки пользователя 01a09448 — только руками пользователя.

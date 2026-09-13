@@ -1,0 +1,76 @@
+# ВНИМАНИЕ: это ЗАГОТОВКА, а не рабочий workflow.
+#
+# GitHub App, которым Arena пушит в репозиторий, не имеет права `workflows`,
+# поэтому изменить .github/workflows/ci.yml из сессии нельзя — push отклоняется:
+#   "refusing to allow a GitHub App to create or update workflow ... without `workflows` permission"
+#
+# Чтобы включить проверки гонки и машины в CI, скопируйте этот файл поверх
+# .github/workflows/ci.yml (локально или в веб-редакторе GitHub):
+#
+#   cp docs/ci-workflow-proposed.yml .github/workflows/ci.yml
+#   git commit -am "ci: проверки гонки и машины" && git push
+#
+# Что добавлено к прежнему ci.yml:
+#   * node tools/racing-smoke-test.js — трасса, ИИ, физика, отбойник
+#   * python3 tools/build-offline.py + node tools/car-model-test.js — машина
+#   * node --check для новых тестов
+#   * защита от устаревших артефактов: play.html и docs/ должны быть пересобраны
+# ---------------------------------------------------------------------------
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Сборка одного файла (мир)
+        run: python3 tools/build.py
+
+      - name: Синтаксис собранной игры
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          html = pathlib.Path('index.html').read_text(encoding='utf-8')
+          js = re.search(r'<script>\n(.*)\n</script>', html, re.S).group(1)
+          pathlib.Path('/tmp/game.js').write_text(js, encoding='utf-8')
+          print('JS извлечён:', len(js.splitlines()), 'строк')
+          PY
+          node --check /tmp/game.js
+
+      - name: Геометрия мира (без браузера)
+        run: node tools/world-stats.js
+
+      - name: Синтаксис тестов
+        run: |
+          node --check tests/world-test.js
+          node --check tools/racing-smoke-test.js
+          node --check tools/car-model-test.js
+
+      - name: Гонка — смоук-тест (трасса, ИИ, физика, отбойник)
+        run: node tools/racing-smoke-test.js
+
+      - name: Гонка — сборка самодостаточного play.html
+        run: python3 tools/build-offline.py
+
+      - name: Машина — 3D-модель, блокировка старта, офлайн-режим
+        run: node tools/car-model-test.js
+
+      - name: play.html и docs/ не устарели
+        run: |
+          python3 tools/sync-docs.py
+          git diff --exit-code --stat new-project/play.html docs/ || {
+            echo '::error::пересоберите play.html (make play) и docs/ (make docs) и закоммитьте';
+            exit 1;
+          }
