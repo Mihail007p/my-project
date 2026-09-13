@@ -507,6 +507,27 @@ function buildGltfCar(colorHex,isPlayer,variant=0){
   }
   return {grp:outer,wheels,bodyMat,tailLights:tailMat,casters,gltf:true,rival3D:!isPlayer};
 }
+/* Та же модель игрока, но с мобильным LOD: сохраняем кузов, стёкла, фары,
+   колёса и силуэт, а тяжёлые салонные/декоративные меши не отправляем GPU.
+   Это принципиально не старый procedural car и не billboard-спрайт. */
+function buildMobileGltfCar(colorHex,variant){
+  const m=buildGltfCar(colorHex,false,variant);
+  const bodyMat=new THREE.MeshStandardMaterial({color:colorHex,metalness:.85,roughness:.38});
+  const glassMat=new THREE.MeshStandardMaterial({color:0x0a0e13,metalness:.65,roughness:.18,
+    transparent:true,opacity:.94});
+  const hidden=/^(interior_light|interior_dark|leather|carpet|carbon_fibre_trim|carbon fibre|chrome|grills|wipers|steering_.*|nuts|centre)$/;
+  m.grp.traverse(o=>{
+    if(!o.isMesh)return;
+    const n=(o.name||'').toLowerCase();
+    if(hidden.test(n)){o.visible=false;return;}
+    o.castShadow=false;o.receiveShadow=false;
+    if(n==='body'){o.material=bodyMat;}
+    else if(n==='glass'){o.material=glassMat;}
+  });
+  m.bodyMat=bodyMat;
+  m.mobile=true;
+  return m;
+}
 
 /* ---------------- СОСТОЯНИЕ ---------------- */
 const game={
@@ -1146,12 +1167,12 @@ function buildOpponentCarMesh(colorHex,variant){
 class Car{
   constructor(name,colorHex,isAI,gridSlot){
     this.name=name; this.isAI=isAI; this.colorHex=colorHex; this.spriteIndex=gridSlot;
-    const m=isAI?(!PERF.lightAI&&assets.ready
-        ?buildGltfCar(colorHex,false,gridSlot)
+    const m=isAI?(assets.ready
+        ?(PERF.lightAI?buildMobileGltfCar(colorHex,gridSlot):buildGltfCar(colorHex,false,gridSlot))
         :buildOpponentCarMesh(colorHex,gridSlot)):
       (assets.ready?buildGltfCar(colorHex,true):buildCarMesh(colorHex,true));
     this.mesh=m.grp; this.wheels=m.wheels; this.bodyMat=m.bodyMat;
-    this.isGltf=!!m.gltf; this.isSprite=!!m.sprite; this.isRival3D=!!m.rival3D;
+    this.isGltf=!!m.gltf; this.mobile=!!m.mobile; this.isSprite=!!m.sprite; this.isRival3D=!!m.rival3D;
     this.casters=m.casters||null; this.shadowOn=true;
     // материал стоп-сигналов: у 3D-модели он свой, у запасной машины ищем по emissive
     this.tailLights=m.tailLights||null;
@@ -1934,7 +1955,7 @@ window.__game={
   perfInfo(){return {touch:TOUCH,lvl:PERF.lvl,dpr:renderer.getPixelRatio(),
     shadows:renderer.shadowMap.enabled,lightAI:PERF.lightAI,lowEnd:PERF.lowEnd,
     rival3D:cars.filter(c=>c.isAI).every(c=>c.isRival3D),
-    cars:cars.map(c=>({ai:c.isAI,gltf:c.isGltf,sprite:!!c.isSprite,rival3D:!!c.isRival3D}))};},
+    cars:cars.map(c=>({ai:c.isAI,gltf:c.isGltf,mobile:!!c.mobile,sprite:!!c.isSprite,rival3D:!!c.isRival3D}))};},
   _perfTick:perfTick,
   tick(dt){update(dt);updateCamera(dt);updateCarShadows(dt);perfTick(dt);}
 };

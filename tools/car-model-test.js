@@ -445,8 +445,8 @@ async function raceCheck(G,label){
   ok(pi0.touch===true,'телефон распознан как touch-устройство');
   ok(pi0.lightAI===true,'на телефоне соперники переводятся на лёгкие меши');
   ok(pi0.lowEnd===true,'Tecno Pova Neo 3 распознан как слабое touch-устройство');
-  ok(pi0.cars.filter(c=>c.ai).every(c=>c.rival3D===true&&!c.gltf),
-    'все 5 соперников используют лёгкие полноценные 3D-меши');
+  ok(pi0.cars.filter(c=>c.ai).every(c=>c.rival3D===true&&c.gltf===true&&c.mobile===true),
+    'все 5 соперников используют мобильный LOD той же Ferrari-модели');
   ok(pi0.cars.find(c=>!c.ai).gltf===true,'машина игрока — настоящая Ferrari');
   ok(pi0.dpr<=.8,'DPR слабого телефона стартует с 0.8: '+pi0.dpr);
   ok(pi0.shadows===false,'на слабом телефоне динамические тени выключены');
