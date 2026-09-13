@@ -184,7 +184,14 @@ async function boot(file,opts){
     matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}}),
     devicePixelRatio:1,innerWidth:1280,innerHeight:720,
     Path2D:class{moveTo(){}lineTo(){}closePath(){}arc(){}quadraticCurveTo(){}bezierCurveTo(){}},
-    Image:class{constructor(){this.width=1;this.height=1;}},
+    Image:class{
+      constructor(){this.width=1;this.height=1;this._ev={};}
+      addEventListener(t,f){(this._ev[t]=this._ev[t]||[]).push(f);}
+      removeEventListener(){}
+      setAttribute(){}
+      set src(v){this._src=v;setTimeout(()=>{(this._ev.load||[]).forEach(f=>f());},0);}
+      get src(){return this._src||'';}
+    },
     atob:s=>Buffer.from(s,'base64').toString('binary'),
     btoa:s=>Buffer.from(s,'binary').toString('base64'),
     Uint8Array,Int8Array,Uint16Array,Int16Array,Uint32Array,Int32Array,
@@ -202,6 +209,7 @@ async function boot(file,opts){
   const getEl=id=>(els[id]=els[id]||makeEl(id));
   sandbox.document={
     createElement:t=>t==='canvas'?Object.assign(makeEl('canvas'),{tagName:'CANVAS'}):makeEl(''),
+    createElementNS:()=>new sandbox.Image(),
     getElementById:getEl,
     querySelector:s=>getEl(s.replace(/^#/,'')),
     querySelectorAll:()=>[],
@@ -278,6 +286,10 @@ function carAssertions(G,sandbox,label){
     label+': стоп-сигналы у каждой машины свои (общий шаблон не перекрашивается)');
   const colors=new Set(cars.map(c=>c.bodyMat.color.getHexString()));
   ok(colors.size>=5,label+': цвета машин различаются ('+colors.size+' из 6)');
+  const spriteInfo=G.perfInfo();
+  ok(spriteInfo.sprites===true,label+': AI-атлас спрайтов загружен');
+  ok(spriteInfo.cars.filter(c=>c.ai).every(c=>c.sprite===true),
+    label+': все соперники используют разные AI-спрайты');
   ok(G.player.bodyMat.color.getHexString()==='d41818',
     label+': цвет игрока = выбранному в меню ('+G.player.bodyMat.color.getHexString()+')');
 
@@ -332,7 +344,7 @@ async function raceCheck(G,label){
   ok(!!G,'игра инициализирована (window.__game)');
   ok(G.game.state==='menu','стартовое меню');
   ok(G.cars.length===6,'6 машин на старте');
-  ok(G.perfInfo().lightAI===false,'без touch (десктоп) соперники остаются с настоящей моделью');
+  ok(G.perfInfo().lightAI===false,'без touch (десктоп) не включается мобильный режим качества');
 
   const btn=env.el('btnStart'),st=env.el('modelStatus'),fill=env.el('modelBarFill');
   ok(btn.disabled===true,'кнопка «ПОЕХАЛИ» заблокирована, пока модель грузится');
@@ -425,7 +437,7 @@ async function raceCheck(G,label){
   const pi0=PG.perfInfo();
   ok(pi0.touch===true,'телефон распознан как touch-устройство');
   ok(pi0.lightAI===true,'на телефоне соперники переводятся на лёгкие меши');
-  ok(pi0.cars.filter(c=>c.ai).every(c=>!c.gltf),'все 5 соперников — лёгкие процедурные меши');
+  ok(pi0.cars.filter(c=>c.ai).every(c=>!c.gltf),'все 5 соперников — лёгкие представления (спрайты или fallback)');
   ok(pi0.cars.find(c=>!c.ai).gltf===true,'машина игрока — настоящая Ferrari');
   ok(pi0.dpr<=1.0,'DPR телефона ограничен 1.0: '+pi0.dpr);
   ok(pi0.shadows===true,'тени на старте включены');

@@ -48,6 +48,9 @@
 | `new-project/assets/ferrari.glb` | Draco-модель Ferrari 458 (1.7 МБ) |
 | `new-project/assets/draco/*` | декодер Draco (wasm + wrapper) |
 | `new-project/assets/hero-car-v2.jpg` | арт меню и референс вида машины |
+| `new-project/assets/opponents/opponent-sprites.png` | AI-атлас: 5 разных соперников × задний/передний ракурс, RGBA |
+| `new-project/assets/opponents/sprite-data.js` | размеры и индексы атласа; встраивается в offline-сборку |
+| `tools/generate-opponent-sprites.js` | PNG-декодер/chroma-key/crop/масштабирование AI-рендеров в атлас |
 | `new-project/lib/three.min.js`, `assets/GLTFLoader.js`, `assets/DRACOLoader.js` | рантайм |
 | `tools/build-offline.py` | сборка play.html (`make play`) |
 | `tools/sync-docs.py` | зеркало в docs/ (`make docs`) |
@@ -70,6 +73,7 @@ make car       тест машины/модели/офлайна/телефон�
 make racing    смоук гонки
 make test      build+stats+play+racing+car (+снимки, если есть puppeteer)
 make render    софтверные PNG машины в tools/soft-render-out/
+node tools/generate-opponent-sprites.js  собрать AI-атлас из исходных PNG
 make serve     сервер разработки :8000
 ```
 
@@ -92,11 +96,16 @@ commit → push в ветку сессии → ссылка пользовате
   (loft-кузов `loftHull(stations)` + кокпит + свет + колёса, ~1.9 тыс. треуг.);
   `buildGltfCar(colorHex,isPlayer)` — клон нормализованного шаблона
   `assets.carTemplate` со СВОИМИ материалами (кузов/стёкла/фонари), иначе
-  перекраска одной машины красит все.
-- **Контракт меша машины** (пологаются Car и тесты):
+  перекраска одной машины красит все. `buildOpponentSprite(index,colorHex)` —
+  billboard из `assets/opponents/opponent-sprites.png`; у каждого AI свой столбец,
+  а ряд переключается между задним и передним ракурсом относительно камеры.
+- **Контракт меша машины** (полагаются Car и тесты):
   `{grp, wheels:[{wg,spin,front}], bodyMat, tailLights, casters, gltf}`.
-  Стоп-сигналы: материал с `emissive===0xff1e1e` (у запасной ищется traverse-ом).
-  Колёса крутятся через `spin.rotation.x`, поворот через `wg.rotation.y`.
+  Для AI-спрайта `wheels` пуст, `gltf:false`, добавляется `sprite:true`, но
+  `bodyMat`/`tailLights` остаются уникальными. Стоп-сигналы: материал с
+  `emissive===0xff1e1e` (у запасной ищется traverse-ом). Колёса крутятся через
+  `spin.rotation.x`, поворот через `wg.rotation.y`.
+
 - **Модель:** загрузка в блоке ассетов: `MODEL_URL='assets/ferrari.glb'`,
   DRACOLoader из `assets/draco/`; `normalize(src)` — нос в +Z, длина 4.55 м,
   колёса на y=0; успех → `assets.ready=true` + `modelApplied()`
@@ -107,8 +116,9 @@ commit → push в ветку сессии → ссылка пользовате
 - **Производительность:** `TOUCH` (maxTouchPoints/pointer:coarse), `PERF`
   {lightAI,lvl,dprScale,...}, `DPR_CAP` (touch 1.0 / десктоп 2), `perfTick(dt)`
   в `tick()` — губернер FPS (ступени: ×0.75 DPR → ×0.6 DPR + тени off;
-  вверх при стабильных >55 FPS). На touch соперники строятся через
-  `buildCarMesh` (`PERF.lightAI`), игрок — GLTF. Тени ИИ: `updateCarShadows`
+  вверх при стабильных >55 FPS). Соперники после загрузки используют лёгкие
+  AI-спрайты, при ошибке загрузки атласа остаётся `buildCarMesh`; игрок — GLTF.
+  Тени ИИ: `updateCarShadows`
   (включаются в радиусе 90 м от якоря).
 - **Хуки тестов:** `window.__game` = {start, update, cars, track, game, input,
   assets, tryStart, carInfo(), perfInfo(), _perfTick, get player, tick(dt)}.
@@ -144,7 +154,9 @@ H 0.9–1.25, min.y≈0, ≥25 мешей, стоп-сигналы подклю�
 make render            # → tools/soft-render-out/*.png
 ```
 Рисует запасную машину (режим отказа модели) в 3 ракурсах и GLTF-модель для
-сравнения. Сравнивай с `tools/screenshots/q-rear34.png`, `q-side.png` и
+сравнения. AI-атлас проверяется отдельно открытием
+`new-project/assets/opponents/opponent-sprites.png`: прозрачный фон, 5 колонок
+сзади и 5 спереди. Сравнивай с `tools/screenshots/q-rear34.png`, `q-side.png` и
 `new-project/assets/hero-car-v2.jpg` (низкий открытый Spider: клин-нос,
 наклонное стекло, кабина с сиденьями, круглые фонари, пятилучевые диски с
 жёлтыми суппортами, БЕЗ антикрыла). После правок кузова прогони `make car`.

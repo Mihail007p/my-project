@@ -35,6 +35,16 @@ def referenced(html):
         refs.add(m.group(1))
     for m in re.finditer(r"'((?:assets|lib)/[^']+)'", html):
         refs.add(m.group(1))
+    # Метаданные атласа — отдельный script, поэтому его PNG-ссылка не видна
+    # в самом index.html. Подхватываем её здесь, иначе зеркало docs/ уедет
+    # без картинок соперников.
+    for r in list(refs):
+        if r.endswith('opponents/sprite-data.js'):
+            meta = os.path.join(SRC, r)
+            if os.path.exists(meta):
+                text = open(meta, encoding='utf-8').read()
+                refs.update(re.findall(r"'((?:assets|lib)/[^']+)'", text))
+
     out = set()
     for r in refs:
         if r.startswith(('http://', 'https://', 'data:', '//')):

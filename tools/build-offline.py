@@ -2,7 +2,8 @@
 """Собирает new-project/play.html — ОДИН самодостаточный файл игры (~4 МБ).
 
 Внутрь встраиваются: three.js, GLTFLoader, DRACOLoader, модель Ferrari (Draco-GLB),
-JS-декодер Draco и арт главного меню. Файл можно открыть двойным щелчком
+JS-декодер Draco, арт главного меню и RGBA-атлас AI-спрайтов соперников.
+Файл можно открыть двойным щелчком
 (file://) или отправить кому угодно — сеть и папка assets/ не нужны.
 
   python3 tools/build-offline.py
@@ -69,15 +70,19 @@ def main():
     three = read('lib/three.min.js')
     gltf = read('assets/GLTFLoader.js')
     draco = read('assets/DRACOLoader.js')
+    sprite_data = read('assets/opponents/sprite-data.js')
     decoder = read('assets/draco/draco_decoder.js')
     for name, code in (('three.min.js', three), ('GLTFLoader.js', gltf),
-                       ('DRACOLoader.js', draco), ('draco_decoder.js', decoder)):
+                       ('DRACOLoader.js', draco), ('sprite-data.js', sprite_data),
+                       ('draco_decoder.js', decoder)):
         if '</script' in code.lower():
             sys.exit(f'{name}: содержит </script — встраивание небезопасно')
 
     # 1. движок и загрузчики — внутрь файла
     html = inline_script(html, '<script src="lib/three.min.js"></script>', three, 'three.js')
     html = inline_script(html, '<script src="assets/GLTFLoader.js"></script>', gltf, 'GLTFLoader')
+    html = inline_script(html, '<script src="assets/opponents/sprite-data.js"></script>',
+                         sprite_data, 'sprite-data.js')
 
     # 2. DRACOLoader + офлайн-хук декодера
     hook = """<script>
@@ -191,10 +196,15 @@ window.__DRACO_WORKER_BODY=__WORKER_BODY__;
     html = sub_once(html, "url('assets/hero-car-v2.jpg')",
                     "url('data:image/jpeg;base64," + base64.b64encode(img).decode() + "')",
                     'hero-арт')
+    sprites = read('assets/opponents/opponent-sprites.png', binary=True)
+    html = sub_once(html, "url: 'assets/opponents/opponent-sprites.png'",
+                    "url: 'data:image/png;base64," + base64.b64encode(sprites).decode() + "'",
+                    'атлас спрайтов соперников')
 
     # 4. самопроверка: никаких внешних зависимостей не осталось
     problems = []
-    for needle in ('<script src=', "url('assets/", "'assets/ferrari", "'assets/draco"):
+    for needle in ('<script src=', "url('assets/", "'assets/ferrari", "'assets/draco",
+                   "'assets/opponents"):
         if needle in html:
             problems.append(needle)
     if problems:
@@ -204,7 +214,7 @@ window.__DRACO_WORKER_BODY=__WORKER_BODY__;
         f.write(html)
     mb = os.path.getsize(OUT) / 1048576
     print(f'play.html: {mb:.2f} МБ — three.js + GLTFLoader + DRACOLoader + '
-          f'Draco-декодер + Ferrari ({len(glb) / 1048576:.2f} МБ GLB) внутри одного файла')
+          f'Draco-декодер + Ferrari + AI-спрайты ({len(glb) / 1048576:.2f} МБ GLB) внутри одного файла')
     if mb > 6:
         print('внимание: файл заметно тяжелее ожидаемых ~4 МБ', file=sys.stderr)
     return 0
