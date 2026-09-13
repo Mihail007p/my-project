@@ -57,7 +57,9 @@
 | `new-project/assets/draco/*` | декодер Draco (wasm + wrapper) |
 | `new-project/assets/hero-car-v2.jpg` | арт меню и референс вида машины |
 | `new-project/assets/opponents/opponent-sprites.png` | AI-атлас: 5 разных соперников × задний/передний ракурс, RGBA |
-| `new-project/assets/opponents/sprite-data.js` | размеры и индексы атласа; встраивается в offline-сборку |
+| `new-project/assets/opponents/opponent-animated-sprites.png` | готовый 2D-лист: 5 машин × 4 кадра руления, вид как из игры |
+| `new-project/assets/opponents/animated-sprite-data.js` | метаданные animated sprite-sheet (10 FPS, baseline 256px) |
+| `new-project/assets/opponents/sprite-data.js` | размеры и индексы старого статичного атласа |
 | `tools/generate-opponent-sprites.js` | PNG-декодер/chroma-key/crop/масштабирование AI-рендеров в атлас |
 | `new-project/lib/three.min.js`, `assets/GLTFLoader.js`, `assets/DRACOLoader.js` | рантайм |
 | `tools/build-offline.py` | сборка play.html (`make play`) |
