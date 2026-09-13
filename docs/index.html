@@ -484,19 +484,29 @@ function spriteTexture(index){
   t.minFilter=THREE.LinearFilter;t.magFilter=THREE.LinearFilter;
   return t;
 }
+function spriteGroundY(index){
+  const bottom=(OPPONENT_SPRITES.bottoms&&OPPONENT_SPRITES.bottoms[index])||229;
+  // Sprite origin is in the centre of the 256×256 cell. Поднимаем ровно на
+  // высоту прозрачного поля, чтобы нижние пиксели машины стояли на дороге.
+  return 4.7*(bottom/OPPONENT_SPRITES.cellSize-.5);
+}
 function setOpponentSpriteAngle(c){
   if(!c.isSprite||!camera||!c.mesh.material.map)return;
   const fx=Math.sin(c.heading),fz=Math.cos(c.heading);
   const dx=camera.position.x-c.pos.x,dz=camera.position.z-c.pos.z;
   const front=dx*fx+dz*fz>0.4;
   const row=front?1:0;
-  if(c.spriteRow===row)return;
-  c.spriteRow=row;
   const col=c.spriteIndex%OPPONENT_SPRITES.columns;
   const atlasIndex=(row?OPPONENT_SPRITES.front[col]:OPPONENT_SPRITES.rear[col]);
+  if(c.spriteRow===row){
+    c.mesh.position.y=spriteGroundY(atlasIndex);
+    return;
+  }
+  c.spriteRow=row;
   const t=c.mesh.material.map;
   t.offset.set((atlasIndex%OPPONENT_SPRITES.columns)/OPPONENT_SPRITES.columns,
     1-(Math.floor(atlasIndex/OPPONENT_SPRITES.columns)+1)/OPPONENT_SPRITES.rows);
+  c.mesh.position.y=spriteGroundY(atlasIndex);
   t.needsUpdate=true;
 }
 function buildOpponentSprite(spriteIndex,colorHex){
@@ -507,7 +517,7 @@ function buildOpponentSprite(spriteIndex,colorHex){
   const sprite=new THREE.Sprite(mat);
   // В ячейке картинка уже подогнана к общей «земле».
   sprite.scale.set(4.7,4.7,1);
-  sprite.position.y=2.24;
+  sprite.position.y=spriteGroundY(atlasIndex);
   // У спрайта нет физических стоп-сигналов, но этот объект сохраняет общий
   // контракт Car и позволяет HUD/торможению управлять яркостью без ошибок.
   return {grp:sprite,wheels:[],bodyMat:mat,
@@ -1154,7 +1164,6 @@ class Car{
   syncMesh(){
     this.mesh.position.copy(this.pos);
     if(this.isSprite){
-      this.mesh.position.y=2.24;
       this.mesh.rotation.set(0,0,0);
       setOpponentSpriteAngle(this);
     }else{

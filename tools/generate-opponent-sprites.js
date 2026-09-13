@@ -86,10 +86,15 @@ function removeMagenta(image) {
   let minX = width, minY = height, maxX = -1, maxY = -1;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const i = (y * width + x) * 4;
-    const dr = pixels[i] - 255, dg = pixels[i + 1], db = pixels[i + 2] - 255;
+    const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+    const dr = r - 255, dg = g, db = b - 255;
     const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    // У AI-рендеров фон бывает не идеально #ff00ff: JPEG-подобный
+    // magenta (#f604dc) тоже должен уйти, иначе в игре появляется прямоугольник.
+    const magentaBackground = r > 180 && b > 165 && g < 110;
     // Мягкий порог сохраняет сглаженный край, но делает сам фон прозрачным.
-    const alpha = Math.max(0, Math.min(255, Math.round((distance - 18) * 5.2)));
+    const alpha = magentaBackground ? 0
+      : Math.max(0, Math.min(255, Math.round((distance - 18) * 5.2)));
     pixels[i + 3] = Math.min(pixels[i + 3], alpha);
     if (pixels[i + 3] > 18) {
       if (x < minX) minX = x; if (x > maxX) maxX = x;
@@ -133,7 +138,7 @@ function putInCell(sprite) {
     const si = (y * w + x) * 4, di = ((top + y) * cell + left + x) * 4;
     scaled.pixels.copy(cellPixels, di, si, si + 4);
   }
-  return cellPixels;
+  return {pixels: cellPixels, bottom: top + h - 1};
 }
 
 function crc32(buf) {
@@ -172,14 +177,16 @@ function processSprite(name, angle) {
 function main() {
   fs.mkdirSync(DIR, {recursive: true});
   const atlas = Buffer.alloc(columns * cell * rows * cell * 4);
+  const bottoms = [];
   // Сначала ряд rear, затем front — это же соглашение использует рантайм.
   for (let row = 0; row < rows; row++) for (let col = 0; col < columns; col++) {
     const angle = row === 0 ? 'rear' : 'front';
     const image = processSprite(names[col], angle);
+    bottoms.push(image.bottom);
     for (let y = 0; y < cell; y++) {
       const src = y * cell * 4;
       const dst = ((row * cell + y) * columns * cell + col * cell) * 4;
-      image.copy(atlas, dst, src, src + cell * 4);
+      image.pixels.copy(atlas, dst, src, src + cell * 4);
     }
     console.log(`  ${angle.padEnd(5)} ${names[col].padEnd(7)} ← chroma-key, crop, ${cell}×${cell}`);
   }
@@ -190,6 +197,7 @@ function main() {
 `  columns: ${columns}, rows: ${rows}, cellSize: ${cell},\n` +
 `  rear: [${names.map((_, i) => i).join(', ')}],\n` +
 `  front: [${names.map((_, i) => columns + i).join(', ')}],\n` +
+`  bottoms: [${bottoms.join(', ')}],\n` +
 `  names: ${JSON.stringify(names)}\n` +
 `});\n`;
   fs.writeFileSync(DATA, data);

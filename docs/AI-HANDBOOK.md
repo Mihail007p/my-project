@@ -7,8 +7,16 @@
 
 ## 0. Правила поведения (коротко и жёстко)
 
-1. **Ветка.** Серия сессий закреплена за `arena/01a095ab-my-project`. Коммиты
-   и push — только в неё (`git push origin arena/01a095ab-my-project`), PR
+0. **Постоянная ссылка для пользователя.** Никогда не называть ссылку с именем
+   ветки постоянной: ветка может измениться или быть удалена. Для финальной
+   версии всегда выдавать immutable permalink с полным SHA коммита:
+   `https://raw.githack.com/Mihail007p/my-project/<FULL_COMMIT_SHA>/new-project/play.html`.
+   SHA получать командой `git rev-parse HEAD` после последнего коммита. Ссылку
+   с `arena/...` можно давать только как preview. Если пользователь просит
+   «постоянную ссылку», в ответе обязательно указывать полный SHA и дату сборки.
+
+1. **Ветка.** Текущая сессия закреплена за `arena/01a0987d-my-project`. Коммиты
+   и push — только в неё (`git push origin arena/01a0987d-my-project`), PR
    открывать из неё. Не переключаться, не создавать и не пушить другие ветки.
    Ветка пользователя `arena/01a09448-my-project` НЕ обновляется агентом.
 2. **`.github/workflows/*` не коммитить**: GitHub App отклоняет push
@@ -60,6 +68,7 @@
 | `tools/screenshots/` | референсы и рендеры: `q-*.png` (GLTF-виды), `fallback-*.png`, `gltf-rear34.png`; `car-*.png` — ИСТОРИЯ (старый «кирпич»), не референс! |
 | `tools/world-stats.js`, `tests/world-test.js` | геометрия мира / снимки (нужен puppeteer, его нет) |
 | `docs/AI-JOURNAL.md`, `docs/AI-HANDBOOK.md` | этот журнал и эта инструкция |
+| `docs/PERMANENT-LINK.md` | обязательное правило immutable-ссылки на игру |
 | `docs/ci-workflow-proposed.yml` | предлагаемый CI (копируется вручную) |
 | `Makefile` | все команды (`make help`) |
 
@@ -81,7 +90,7 @@ make serve     сервер разработки :8000
 `правка index.html` → `node --check` на извлечённом inline-скрипте →
 `make play` → `make docs` → `make test` → CHANGELOG + журнал →
 commit → push в ветку сессии → ссылка пользователю с `?v=N`:
-`https://raw.githack.com/Mihail007p/my-project/arena/01a095ab-my-project/new-project/play.html?v=N`
+`https://raw.githack.com/Mihail007p/my-project/arena/01a0987d-my-project/new-project/play.html?v=N`
 
 Извлечение JS для `node --check`: последний блок `<script>` без `src`:
 `python3 -c "s=open('new-project/index.html').read();i=s.rindex('<script>');j=s.rindex('</script>');open('/tmp/g.js','w').write(s[i+8:j])" && node --check /tmp/g.js`

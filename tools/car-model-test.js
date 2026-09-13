@@ -290,6 +290,8 @@ function carAssertions(G,sandbox,label){
   ok(spriteInfo.sprites===true,label+': AI-атлас спрайтов загружен');
   ok(spriteInfo.cars.filter(c=>c.ai).every(c=>c.sprite===true),
     label+': все соперники используют разные AI-спрайты');
+  ok(G.cars.filter(c=>c.isAI).every(c=>c.mesh.position.y>1.2&&c.mesh.position.y<2.0),
+    label+': нижняя граница каждого спрайта выставлена на уровень дороги');
   ok(G.player.bodyMat.color.getHexString()==='d41818',
     label+': цвет игрока = выбранному в меню ('+G.player.bodyMat.color.getHexString()+')');
 
