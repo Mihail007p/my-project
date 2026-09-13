@@ -106,8 +106,9 @@ commit → push в ветку сессии → ссылка пользовате
   `buildGltfCar(colorHex,isPlayer)` — клон нормализованного шаблона
   `assets.carTemplate` со СВОИМИ материалами (кузов/стёкла/фонари), иначе
   перекраска одной машины красит все. `buildOpponentSprite(index,colorHex)` —
-  billboard из `assets/opponents/opponent-sprites.png`; у каждого AI свой столбец,
-  а ряд переключается между задним и передним ракурсом относительно камеры.
+  текстурированная плоскость из `assets/opponents/opponent-sprites.png`,
+  повернутая по heading машины; у каждого AI свой столбец, а ряд переключается
+  между задним и передним ракурсом относительно камеры.
 - **Контракт меша машины** (полагаются Car и тесты):
   `{grp, wheels:[{wg,spin,front}], bodyMat, tailLights, casters, gltf}`.
   Для AI-спрайта `wheels` пуст, `gltf:false`, добавляется `sprite:true`, но

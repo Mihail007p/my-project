@@ -4789,7 +4789,7 @@ function buildGltfCar(colorHex,isPlayer){
 
 /* ---------------- СПРАЙТЫ СОПЕРНИКОВ ----------------
    Пять соперников получили собственные AI-рендеры: в атласе есть вид сзади
-   и спереди для каждого. Sprite остаётся очень дешёвым на слабом телефоне,
+   и спереди для каждого. Текстурированная плоскость остаётся очень дешёвой
    а игрок продолжает ехать на настоящей Ferrari 458. Пока PNG ещё грузится,
    используется прежний процедурный меш — гонка не ждёт картинку. */
 let opponentAtlas=null;
@@ -4818,6 +4818,7 @@ function setOpponentSpriteAngle(c){
   const atlasIndex=(row?OPPONENT_SPRITES.front[col]:OPPONENT_SPRITES.rear[col]);
   if(c.spriteRow===row){
     c.mesh.position.y=spriteGroundY(atlasIndex);
+    c.mesh.rotation.y=c.heading+(row?0:Math.PI);
     return;
   }
   c.spriteRow=row;
@@ -4825,15 +4826,17 @@ function setOpponentSpriteAngle(c){
   t.offset.set((atlasIndex%OPPONENT_SPRITES.columns)/OPPONENT_SPRITES.columns,
     1-(Math.floor(atlasIndex/OPPONENT_SPRITES.columns)+1)/OPPONENT_SPRITES.rows);
   c.mesh.position.y=spriteGroundY(atlasIndex);
+  c.mesh.rotation.y=c.heading+(row?0:Math.PI);
   t.needsUpdate=true;
 }
 function buildOpponentSprite(spriteIndex,colorHex){
   const col=spriteIndex%OPPONENT_SPRITES.columns;
   const atlasIndex=OPPONENT_SPRITES.rear[col];
-  const mat=new THREE.SpriteMaterial({map:spriteTexture(atlasIndex),color:colorHex,
-    transparent:true,alphaTest:.03,depthWrite:true,fog:true});
-  const sprite=new THREE.Sprite(mat);
-  // В ячейке картинка уже подогнана к общей «земле».
+  const mat=new THREE.MeshBasicMaterial({map:spriteTexture(atlasIndex),color:colorHex,
+    transparent:true,alphaTest:.03,depthWrite:true,fog:true,side:THREE.DoubleSide});
+  // Это вертикальная плоскость, а не camera-facing Sprite: она поворачивается
+  // вместе с машиной и поэтому не выглядит наклейкой поперёк трассы.
+  const sprite=new THREE.Mesh(new THREE.PlaneGeometry(1,1),mat);
   sprite.scale.set(4.7,4.7,1);
   sprite.position.y=spriteGroundY(atlasIndex);
   // У спрайта нет физических стоп-сигналов, но этот объект сохраняет общий
@@ -4844,6 +4847,7 @@ function buildOpponentSprite(spriteIndex,colorHex){
 function disposeOpponentSprite(c){
   if(!c||!c.isSprite||!c.mesh)return;
   const mat=c.mesh.material;
+  if(c.mesh.geometry&&c.mesh.geometry.dispose)c.mesh.geometry.dispose();
   if(mat&&mat.map&&mat.map!==opponentAtlas)mat.map.dispose();
   if(mat&&mat.dispose)mat.dispose();
 }
