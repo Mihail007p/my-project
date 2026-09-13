@@ -519,17 +519,27 @@ const input={left:false,right:false,up:false,down:false,hand:false,steerSm:0};
 let renderer,scene,camera,sunLight,hemiLight;
 const clock={last:0};
 /* Слабые телефоны (Mali-G52 и ниже): 6 машин по 359 тыс. треугольников + тени
-   + DPR 1.5 съедают все кадры в секунду. На touch-экранах: без MSAA, DPR 1.0,
-   лёгкие низкополигональные 3D-соперники вместо тяжёлых GLTF (герой игрока —
-   настоящая Ferrari). Дальше качество доводит губернер по FPS (perfTick). */
+   съедают все кадры в секунду. На touch-экранах AI сразу получает лёгкие
+   3D-меши, а не пять тяжёлых GLTF-клонов. Tecno Pova Neo 3 дополнительно
+   определяется по UA/памяти: отключаем динамические тени и стартуем с DPR 0.8.
+   Игрок остаётся настоящей Ferrari; дальний AI не превращается в плоский спрайт. */
 const TOUCH=(navigator.maxTouchPoints>0||matchMedia('(pointer: coarse)').matches);
-const PERF={lightAI:TOUCH,lvl:0,dprScale:1,acc:0,n:0,bad:0,good:0};
+const UA=(navigator.userAgent||'').toLowerCase();
+const DEVICE_MEMORY=Number(navigator.deviceMemory||0);
+const CPU_CORES=Number(navigator.hardwareConcurrency||0);
+const LOW_END_TOUCH=TOUCH&&(
+  /tecno|pova|lh6n|lh7n|lh8n/.test(UA)||
+  (DEVICE_MEMORY>0&&DEVICE_MEMORY<=4)||
+  (CPU_CORES>0&&CPU_CORES<=4)
+);
+const PERF={lightAI:TOUCH,lowEnd:LOW_END_TOUCH,lvl:0,
+  dprScale:LOW_END_TOUCH?.8:1,acc:0,n:0,bad:0,good:0};
 const DPR_CAP=TOUCH?1.0:2;
 try{
   renderer=new THREE.WebGLRenderer({canvas:$('gl'),antialias:!TOUCH,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,DPR_CAP));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,DPR_CAP)*PERF.dprScale);
   renderer.setSize(window.innerWidth,window.innerHeight);
-  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.enabled=!LOW_END_TOUCH;
   renderer.shadowMap.type=TOUCH?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
   renderer.outputEncoding=THREE.sRGBEncoding;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -555,7 +565,7 @@ hemiLight=new THREE.HemisphereLight(0xcfe4ff,0x51624a,0.85);
 scene.add(hemiLight);
 sunLight=new THREE.DirectionalLight(0xfff1d6,1.35);
 sunLight.castShadow=true;
-sunLight.shadow.mapSize.set(TOUCH?1024:2048,TOUCH?1024:2048);
+sunLight.shadow.mapSize.set(LOW_END_TOUCH?512:(TOUCH?1024:2048),LOW_END_TOUCH?512:(TOUCH?1024:2048));
 sunLight.shadow.camera.left=-95; sunLight.shadow.camera.right=95;
 sunLight.shadow.camera.top=95;  sunLight.shadow.camera.bottom=-95;
 sunLight.shadow.camera.near=20; sunLight.shadow.camera.far=420;
@@ -1136,7 +1146,9 @@ function buildOpponentCarMesh(colorHex,variant){
 class Car{
   constructor(name,colorHex,isAI,gridSlot){
     this.name=name; this.isAI=isAI; this.colorHex=colorHex; this.spriteIndex=gridSlot;
-    const m=isAI?(assets.ready?buildGltfCar(colorHex,false,gridSlot):buildOpponentCarMesh(colorHex,gridSlot)):
+    const m=isAI?(!PERF.lightAI&&assets.ready
+        ?buildGltfCar(colorHex,false,gridSlot)
+        :buildOpponentCarMesh(colorHex,gridSlot)):
       (assets.ready?buildGltfCar(colorHex,true):buildCarMesh(colorHex,true));
     this.mesh=m.grp; this.wheels=m.wheels; this.bodyMat=m.bodyMat;
     this.isGltf=!!m.gltf; this.isSprite=!!m.sprite; this.isRival3D=!!m.rival3D;
@@ -1783,9 +1795,9 @@ function setDPR(){
   renderer.setSize(window.innerWidth,window.innerHeight);
 }
 function applyPerf(){
-  PERF.dprScale=[1,.75,.6][PERF.lvl];
+  PERF.dprScale=(PERF.lowEnd?[.8,.65,.55]:[1,.75,.6])[PERF.lvl];
   setDPR();
-  const sh=PERF.lvl<2;
+  const sh=!PERF.lowEnd&&PERF.lvl<2;
   if(renderer.shadowMap.enabled!==sh){
     renderer.shadowMap.enabled=sh;
     scene.traverse(o=>{
@@ -1920,7 +1932,7 @@ window.__game={
   },
   get player(){return player;},
   perfInfo(){return {touch:TOUCH,lvl:PERF.lvl,dpr:renderer.getPixelRatio(),
-    shadows:renderer.shadowMap.enabled,lightAI:PERF.lightAI,
+    shadows:renderer.shadowMap.enabled,lightAI:PERF.lightAI,lowEnd:PERF.lowEnd,
     rival3D:cars.filter(c=>c.isAI).every(c=>c.isRival3D),
     cars:cars.map(c=>({ai:c.isAI,gltf:c.isGltf,sprite:!!c.isSprite,rival3D:!!c.isRival3D}))};},
   _perfTick:perfTick,

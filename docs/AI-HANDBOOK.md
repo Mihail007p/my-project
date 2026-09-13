@@ -108,16 +108,17 @@ commit → push в ветку сессии → ссылка пользовате
   `buildGltfCar(colorHex,isPlayer)` — клон нормализованного шаблона
   `assets.carTemplate` со СВОИМИ материалами (кузов/стёкла/фонари), иначе
   перекраска одной машины красит все. `buildOpponentCarMesh(colorHex,variant)` —
-  процедурный fallback при отказе загрузки. После загрузки `buildGltfCar(colorHex,
-  false,variant)` даёт каждому AI качественную копию GLTF Ferrari со своими
-  пропорциями и aero-деталями. Все варианты остаются полноценными объектами Car,
-  а не плоскими картинками, поэтому повторяют поворот, крен, колёса и физику игрока.
+  лёгкий процедурный 3D-вариант для touch/слабых устройств и fallback при отказе
+  загрузки. На десктопе после загрузки `buildGltfCar(colorHex,false,variant)` даёт
+  каждому AI качественную копию GLTF Ferrari со своими пропорциями и aero-деталями.
+  Все варианты остаются полноценными объектами Car, а не плоскими картинками,
+  поэтому повторяют поворот, крен, колёса и физику игрока.
 - **Контракт меша машины** (полагаются Car и тесты):
   `{grp, wheels:[{wg,spin,front}], bodyMat, tailLights, casters, gltf}`.
-  После успешной загрузки AI имеет `gltf:true`, `rival3D:true`, свои материалы
-  и детали; при ошибке используется `gltf:false` fallback. Стоп-сигналы:
-  материал с `emissive===0xff1e1e` (у запасной ищется traverse-ом). Колёса
-  крутятся через `spin.rotation.x`, поворот через `wg.rotation.y`.
+  После успешной загрузки desktop-AI имеет `gltf:true`, а mobile-AI — `gltf:false`;
+  оба имеют `rival3D:true`, свои материалы и детали. Стоп-сигналы: материал
+  с `emissive===0xff1e1e` (у запасной ищется traverse-ом). Колёса крутятся через
+  `spin.rotation.x`, поворот через `wg.rotation.y`.
 
 - **Модель:** загрузка в блоке ассетов: `MODEL_URL='assets/ferrari.glb'`,
   DRACOLoader из `assets/draco/`; `normalize(src)` — нос в +Z, длина 4.55 м,
@@ -126,13 +127,15 @@ commit → push в ветку сессии → ссылка пользовате
   `modelFailed(reason)` (старт с запасной машиной, подпись в меню).
   Гейт: `setStart(bool)`, `tryStart()`; кнопка `btnStart`, статус `modelStatus`,
   полоса `modelBarFill`.
-- **Производительность:** `TOUCH` (maxTouchPoints/pointer:coarse), `PERF`
-  {lightAI,lvl,dprScale,...}, `DPR_CAP` (touch 1.0 / десктоп 2), `perfTick(dt)`
-  в `tick()` — губернер FPS (ступени: ×0.75 DPR → ×0.6 DPR + тени off;
-  вверх при стабильных >55 FPS). После загрузки соперники используют качественные
-  GLTF-клоны с разными aero-вариантами как игрок; до загрузки/при ошибке —
-  `buildOpponentCarMesh`. Тени ИИ: `updateCarShadows`
-  (включаются в радиусе 90 м от якоря).
+- **Производительность:** `TOUCH` (maxTouchPoints/pointer:coarse), `LOW_END_TOUCH`
+  (Tecno/Pova/LH6n и устройства с <=4 ГБ или <=4 ядрами), `PERF`
+  `{lightAI,lowEnd,lvl,dprScale,...}`, `DPR_CAP` (touch 1.0 / десктоп 2),
+  `perfTick(dt)` в `tick()` — губернер FPS (ступени: на слабом телефоне
+  0.8 → 0.65 → 0.55 DPR, на остальных 1 → 0.75 → 0.6; при слабом FPS
+  отключаются тени). Touch-AI сразу использует `buildOpponentCarMesh`, desktop-AI
+  после загрузки использует качественные GLTF-клоны. На Tecno/Pova динамические
+  тени выключены сразу, чтобы не ждать двух секунд просадки. Тени ИИ:
+  `updateCarShadows` (включаются в радиусе 90 м от якоря, если разрешены).
 - **Хуки тестов:** `window.__game` = {start, update, cars, track, game, input,
   assets, tryStart, carInfo(), perfInfo(), _perfTick, get player, tick(dt)}.
 

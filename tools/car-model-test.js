@@ -202,7 +202,12 @@ async function boot(file,opts){
   sandbox.window=sandbox;
   sandbox.globalThis=sandbox;
   sandbox.self=sandbox;
-  sandbox.navigator={userAgent:'node-car-test',maxTouchPoints:opts.touch?5:0};
+  sandbox.navigator={
+    userAgent:opts.touch?'TECNO LH6n':'node-car-test',
+    maxTouchPoints:opts.touch?5:0,
+    deviceMemory:opts.touch?4:8,
+    hardwareConcurrency:opts.touch?4:8
+  };
   sandbox.addEventListener=()=>{};
   sandbox.removeEventListener=()=>{};
   const els={};
@@ -431,7 +436,7 @@ async function raceCheck(G,label){
   /* ================================================================
      СЦЕНАРИЙ 5 — слабый телефон: лёгкие соперники и губернер FPS
      ================================================================ */
-  section('5. телефон (touch): лёгкие соперники, DPR и губернер FPS');
+  section('5. Tecno Pova Neo 3 (touch): лёгкие соперники, DPR и губернер FPS');
   const ph=await boot(path.join(NP,'index.html'),{touch:true});
   const PG=ph.G;
   for(let i=0;i<200&&!PG.assets.ready;i++)await ph.tick(50);
@@ -439,11 +444,12 @@ async function raceCheck(G,label){
   const pi0=PG.perfInfo();
   ok(pi0.touch===true,'телефон распознан как touch-устройство');
   ok(pi0.lightAI===true,'на телефоне соперники переводятся на лёгкие меши');
-  ok(pi0.cars.filter(c=>c.ai).every(c=>c.rival3D===true&&c.gltf===true),
-    'все 5 соперников используют качественные 3D-модели как игрок');
+  ok(pi0.lowEnd===true,'Tecno Pova Neo 3 распознан как слабое touch-устройство');
+  ok(pi0.cars.filter(c=>c.ai).every(c=>c.rival3D===true&&!c.gltf),
+    'все 5 соперников используют лёгкие полноценные 3D-меши');
   ok(pi0.cars.find(c=>!c.ai).gltf===true,'машина игрока — настоящая Ferrari');
-  ok(pi0.dpr<=1.0,'DPR телефона ограничен 1.0: '+pi0.dpr);
-  ok(pi0.shadows===true,'тени на старте включены');
+  ok(pi0.dpr<=.8,'DPR слабого телефона стартует с 0.8: '+pi0.dpr);
+  ok(pi0.shadows===false,'на слабом телефоне динамические тени выключены');
 
   PG.game.state='racing';
   for(let i=0;i<70;i++)PG._perfTick(1/30);        // ~2.3 с по 30 FPS
@@ -455,7 +461,7 @@ async function raceCheck(G,label){
   ok(pi2.lvl===2&&pi2.shadows===false,'далее ступень 2 — без теней: lvl '+pi2.lvl);
   for(let i=0;i<700;i++)PG._perfTick(1/60);       // ~11.7 с по 60 FPS
   const pi3=PG.perfInfo();
-  ok(pi3.lvl===0&&pi3.shadows===true,'стабильные 60 FPS вернули качество: lvl '+pi3.lvl);
+  ok(pi3.lvl===0&&pi3.shadows===false,'стабильные 60 FPS вернули качество без теней: lvl '+pi3.lvl);
   await ph.close?ph.close():null;
 
   section('Итог');
