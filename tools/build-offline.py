@@ -205,7 +205,7 @@ window.__DRACO_WORKER_BODY=__WORKER_BODY__;
         f.write(html)
     mb = os.path.getsize(OUT) / 1048576
     print(f'play.html: {mb:.2f} МБ — three.js + GLTFLoader + DRACOLoader + '
-          f'Draco-декодер + Ferrari + лёгкие 3D-соперники ({len(glb) / 1048576:.2f} МБ GLB) внутри одного файла')
+          f'Draco-декодер + Ferrari + 3D-соперники ({len(glb) / 1048576:.2f} МБ GLB) внутри одного файла')
     if mb > 6:
         print('внимание: файл заметно тяжелее ожидаемых ~4 МБ', file=sys.stderr)
     return 0

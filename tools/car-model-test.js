@@ -439,7 +439,8 @@ async function raceCheck(G,label){
   const pi0=PG.perfInfo();
   ok(pi0.touch===true,'телефон распознан как touch-устройство');
   ok(pi0.lightAI===true,'на телефоне соперники переводятся на лёгкие меши');
-  ok(pi0.cars.filter(c=>c.ai).every(c=>c.rival3D===true&&!c.gltf),'все 5 соперников — лёгкие 3D-варианты');
+  ok(pi0.cars.filter(c=>c.ai).every(c=>c.rival3D===true&&c.gltf===true),
+    'все 5 соперников используют качественные 3D-модели как игрок');
   ok(pi0.cars.find(c=>!c.ai).gltf===true,'машина игрока — настоящая Ferrari');
   ok(pi0.dpr<=1.0,'DPR телефона ограничен 1.0: '+pi0.dpr);
   ok(pi0.shadows===true,'тени на старте включены');

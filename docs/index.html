@@ -421,7 +421,7 @@ const assets={carTemplate:null,ready:false,failed:false,unlocked:false,
   },MODEL_WAIT_LIMIT*1000);
   if(guard&&guard.unref)guard.unref();    // не держим процесс Node в автотестах
 })();
-function buildGltfCar(colorHex,isPlayer){
+function buildGltfCar(colorHex,isPlayer,variant=0){
   const outer=new THREE.Group();
   const root=assets.carTemplate.clone(true);
   /* Кузов, стёкла и стоп-сигналы получают СВОИ материалы на каждую машину.
@@ -445,6 +445,46 @@ function buildGltfCar(colorHex,isPlayer){
     if(o.name==='glass'||mn==='Glass_Gray')o.material=glassMat;
     else if(o.name==='lights_red'||mn==='Taillight_Glass')o.material=tailMat;  // стоп-сигналы горят при торможении
   });
+  if(!isPlayer){
+    const shape=[
+      [1.03,.98,1.02], // Falcon — широкий hypercar
+      [.99,.94,1.04],  // Vortex — electric GT
+      [1.06,1.00,1.03], // Baron — grand tourer
+      [.98,1.04,1.02],  // Ghost — rally coupe
+      [1.08,.97,1.04]   // Titan — track hypercar
+    ][variant%5];
+    root.scale.set(shape[0],shape[1],shape[2]);
+    const aero=new THREE.MeshStandardMaterial({color:0x0a0e14,metalness:.7,roughness:.28});
+    const led=new THREE.MeshStandardMaterial({color:0xffe7b0,emissive:0xffb84d,emissiveIntensity:1.5});
+    const add=(g,m,x,y,z,rx=0,ry=0,rz=0)=>{
+      const o=new THREE.Mesh(g,m);o.position.set(x,y,z);o.rotation.set(rx,ry,rz);
+      o.castShadow=true;outer.add(o);casters.push(o);return o;
+    };
+    const box=(x,y,z)=>new THREE.BoxGeometry(x,y,z);
+    // Варианты отличаются обвесом, но остаются современными и узнаваемыми.
+    if(variant===0){
+      add(box(1.35,.055,.12),aero,0,1.02,-1.82);
+      add(box(.055,.27,.05),aero,-.50,.87,-1.82);
+      add(box(.055,.27,.05),aero,.50,.87,-1.82);
+    }else if(variant===1){
+      add(box(1.38,.045,.22),aero,0,.22,2.20);
+      add(box(1.05,.035,.035),led,0,.49,1.99);
+    }else if(variant===2){
+      add(box(1.18,.045,.45),aero,0,.37,-1.85);
+      add(box(.06,.09,.70),aero,-.70,.50,.12,0,-.14);
+      add(box(.06,.09,.70),aero,.70,.50,.12,0,.14);
+    }else if(variant===3){
+      add(box(1.42,.06,.12),aero,0,1.04,-1.80);
+      add(box(.055,.25,.05),aero,-.52,.87,-1.80);
+      add(box(.055,.25,.05),aero,.52,.87,-1.80);
+      add(box(.22,.06,.30),aero,0,1.10,.10,-.18);
+    }else{
+      add(box(1.48,.07,.15),aero,0,.24,2.18);
+      add(box(1.50,.05,.12),aero,0,1.00,-1.80);
+      add(box(.10,.15,.40),aero,-.67,.50,-1.85);
+      add(box(.10,.15,.40),aero,.67,.50,-1.85);
+    }
+  }
   outer.add(root);
   // колёса: передние — в держатель для руления
   const wheels=[];
@@ -465,7 +505,7 @@ function buildGltfCar(colorHex,isPlayer){
       wheels.push({wg:w,spin:w,front:false});
     }
   }
-  return {grp:outer,wheels,bodyMat,tailLights:tailMat,casters,gltf:true};
+  return {grp:outer,wheels,bodyMat,tailLights:tailMat,casters,gltf:true,rival3D:!isPlayer};
 }
 
 /* ---------------- СОСТОЯНИЕ ---------------- */
@@ -1096,7 +1136,7 @@ function buildOpponentCarMesh(colorHex,variant){
 class Car{
   constructor(name,colorHex,isAI,gridSlot){
     this.name=name; this.isAI=isAI; this.colorHex=colorHex; this.spriteIndex=gridSlot;
-    const m=isAI?buildOpponentCarMesh(colorHex,gridSlot):
+    const m=isAI?(assets.ready?buildGltfCar(colorHex,false,gridSlot):buildOpponentCarMesh(colorHex,gridSlot)):
       (assets.ready?buildGltfCar(colorHex,true):buildCarMesh(colorHex,true));
     this.mesh=m.grp; this.wheels=m.wheels; this.bodyMat=m.bodyMat;
     this.isGltf=!!m.gltf; this.isSprite=!!m.sprite; this.isRival3D=!!m.rival3D;
